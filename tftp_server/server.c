@@ -121,12 +121,11 @@ printf("______________________________________________________________________\n
     return 1;
 }
 static int process_wrq(char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
-     //utiliser le pwd
-    char cwd[100];
-    getcwd(cwd, sizeof(cwd));
-    strcat(cwd,"/");
-    strcat(cwd,filename);
-    FILE* received_file = fopen(cwd, "wb"); // à modifier filename
+    /*
+    * check if the file already exists : 
+    * tftp does'nt allow overwriting an existing file 
+    */
+    FILE* received_file = fopen(filename, "wb"); // à modifier filename
     if (received_file == NULL) {
         send_error_packet(ERROR, "Cannot open file for writing", client_addr, sockfd);
         return -1;

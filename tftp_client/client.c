@@ -134,12 +134,7 @@ void receive_file(const char* filename) {
     request(RRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr);
     char buf[516];
     size_t packet_size;
-    //utiliser le pwd
-    char received_file_path[100];
-    getcwd(received_file_path, sizeof(received_file_path));
-    strcat(received_file_path,"/");
-    strcat(received_file_path,filename);
-    FILE* requested_file = fopen(received_file_path, "wb");
+    FILE* requested_file = fopen(filename, "wb");
     if (!requested_file) {
         perror("Failed to open file");
         return;
@@ -156,7 +151,7 @@ void receive_file(const char* filename) {
         }
         if(get_opcode(buf) == ERROR){
             printf("[get] : error code = %d : error message : %s\n",get_error_code(buf),get_error_message(buf));
-            if(remove(received_file_path)){
+            if(remove(filename)){
                 perror("[remove]");
             }
             break;
