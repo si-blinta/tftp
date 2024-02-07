@@ -113,7 +113,7 @@ size_t convert_to_netascii(char* buffer) {
     buffer[j] = '\0'; 
     return j; 
 }
-int send_ack(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number) {
+int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number) {
     size_t packet_size;
     char* ack_packet = build_ack_packet(block_number, &packet_size);
 
@@ -219,3 +219,16 @@ char* build_ack_packet(uint16_t block_number, size_t* packet_size) {
 
     return packet;
 }
+int send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
+    size_t packet_size;
+    char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
+        if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
+            perror("[sendto]");
+        }
+        free(error_packet); 
+}
+void print_error_message(char* buf){
+    printf("[ERROR] Code = %d : Message = %s\n", get_error_code(buf), get_error_message(buf));
+}
+
+

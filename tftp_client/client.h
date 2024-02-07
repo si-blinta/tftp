@@ -33,7 +33,7 @@ static void set_file_transfer_mode(const char* mode);
  * 
  * @param filename The name of the file to send.
  */
-static void send_file(const char* filename);
+static int send_file(const char* filename);
 
 //----------------------------------------------------------------------------------------------
 /**

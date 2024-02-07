@@ -61,6 +61,5 @@ static int process_wrq(char* filename,char* mode, const struct sockaddr_in* clie
  * @param client_addr Pointer to struct sockaddr_in containing the client's address information.
  * @param sockfd The socket file descriptor for communicating with the client.
  */
-void send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
 
 #endif // SERVER_H

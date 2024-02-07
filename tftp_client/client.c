@@ -63,11 +63,11 @@ static int connect_to_tftp_server(const char* server_ip, int server_port) {
 static void set_file_transfer_mode(const char* mode){
         strcpy(transfer_mode,mode);
 }
-static void send_file(const char* filename) {
+static int send_file(const char* filename) {
     FILE* requested_file = fopen(filename, "rb");
     if (requested_file == NULL) {
         perror("Failed to open file");
-        return; 
+        return -1 ; 
     }
 
     request(WRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr);
@@ -83,14 +83,14 @@ static void send_file(const char* filename) {
     if (bytes_received == -1) {
         perror("[recvfrom]");
         fclose(requested_file);
-        return;
+        return -1 ;
     }
 
-    if (get_opcode(buf) != ACK || get_block_number(buf) != 0) {
-        printf("Unexpected response or error after WRQ\n");
-        fclose(requested_file);
-        return;
-    }
+    if (get_opcode(buf) == ERROR) {    
+            print_error_message(buf);
+            fclose(requested_file);
+            return 0 ;
+        }
 #ifdef DEBUG
 printf("______________________________________________________________________\n");
 #endif //DEBUG   
@@ -101,7 +101,7 @@ printf("______________________________________________________________________\n
             perror("[sendto]");
             free(data_packet); // Free the allocated memory
             fclose(requested_file); // Close the file
-            return;
+            return -1;
         }
         free(data_packet); // Free the allocated memory after sending
 
@@ -109,7 +109,8 @@ printf("______________________________________________________________________\n
         bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &len);
         if (bytes_received == -1) {
             perror("[recvfrom]");
-            break;
+            fclose(requested_file);
+            return -1 ;
         }
 #ifdef DEBUG     
         if (get_opcode(buf) == ACK && get_block_number(buf) == block_number) {
@@ -118,8 +119,9 @@ printf("______________________________________________________________________\n
 #endif //DEBUG       
         } 
         if (get_opcode(buf) == ERROR) {    
-            printf("[ERROR] Code = %d : Message = %s\n", get_error_code(buf), get_error_message(buf));
-            break; // Exit the loop on error
+            print_error_message(buf);
+            fclose(requested_file);
+            return 0; 
         }
     }
 
@@ -137,7 +139,8 @@ void receive_file(const char* filename) {
     FILE* requested_file = fopen(filename, "wb");
     if (!requested_file) {
         perror("Failed to open file");
-        return;
+        fclose(requested_file);
+        exit(1);
     }
     socklen_t len = sizeof(addr);
     int block_number = 1;
@@ -158,9 +161,8 @@ void receive_file(const char* filename) {
         }
         
         fwrite(get_data(buf), 1, bytes_received - 4, requested_file); // 
-        send_ack(sockfd,(struct sockaddr*)&addr,len,block_number);
+        send_ack_packet(sockfd,(struct sockaddr*)&addr,len,block_number);
        
-
         block_number++;
         // Check if this is the last data block
         if (bytes_received < 516) {

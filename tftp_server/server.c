@@ -1,13 +1,6 @@
 #include "server.h"
 #define DEBUG 1
-void send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
-    size_t packet_size;
-    char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
-        if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
-            perror("[sendto]");
-        }
-        free(error_packet); 
-}
+
 static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
@@ -71,8 +64,7 @@ static int process_rrq(char* filename,char* mode, const struct sockaddr_in* clie
     FILE* requested_file = fopen(filename, "rb");
 
     if (requested_file == NULL) {
-        
-       send_error_packet(FILE_NOT_FOUND,"Le fichier est introuvable",client_addr,sockfd);
+        send_error_packet(FILE_NOT_FOUND,"File does'nt exist",client_addr,sockfd);
         return -1;
     }
 
@@ -106,7 +98,7 @@ printf("______________________________________________________________________\n
 #endif //DEBUG       
         } 
         if (get_opcode(buf) == ERROR) {    
-            printf("[ERROR] Code = %d : Message = %s\n", get_error_code(buf), get_error_message(buf));
+            print_error_message(buf);
             break; // Exit the loop on error
         }
     }
@@ -121,67 +113,38 @@ printf("______________________________________________________________________\n
     return 1;
 }
 static int process_wrq(char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
-    /*
-    * check if the file already exists : 
-    * tftp does'nt allow overwriting an existing file 
-    */
-    FILE* received_file = fopen(filename, "wb"); // à modifier filename
+    FILE* file_exist = fopen(filename,"r");
+    if( file_exist != NULL){
+        //the file exists
+        fclose(file_exist);
+        send_error_packet(FILE_ALREADY_EXISTS,"File already exists",client_addr,sockfd);
+        return 0;
+    } 
+    FILE* received_file = fopen(filename, "wb"); 
     if (received_file == NULL) {
-        send_error_packet(ERROR, "Cannot open file for writing", client_addr, sockfd);
+        send_error_packet(NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd);
         return -1;
     }
 
     // Send initial ACK for WRQ to start receiving data
-    size_t ack_packet_size;
-    char* ack_packet = build_ack_packet(0, &ack_packet_size); // ACK for block 0
     socklen_t len = sizeof(*client_addr);
-    if (sendto(sockfd, ack_packet, ack_packet_size, 0, (const struct sockaddr*)client_addr, len) < 0) {
-        perror("Failed to send ACK");
-        free(ack_packet);
-        fclose(received_file);
+    if(send_ack_packet(sockfd,(struct sockaddr*)client_addr,len,0) == -1){
         return -1;
     }
-    free(ack_packet);
-
     char buf[516];
-    uint16_t block_number = 0;
-    ssize_t bytes_received = 516; // Initialize to enter the loop
+    size_t bytes_received; 
 
-    // Use while loop instead of do-while
-    while (bytes_received == 516) { // Loop as long as a full-sized packet is received
+    while (1) { 
         bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)client_addr, &len);
-        if (bytes_received < 4) { // Packet too small to be valid
-            perror("Received packet too small");
-            fclose(received_file);
-            return -1;
-        }
-
-        if (get_opcode(buf) != DATA) {
-            printf("Unexpected opcode. Expected DATA.\n");
-            fclose(received_file);
-            return -1;
-        }
-
         uint16_t received_block_number = get_block_number(buf);
-        if (received_block_number != block_number + 1) {
-            printf("Unexpected block number.\n");
-            fclose(received_file);
-            return -1;
-        }
-
         // Write received data to file
         fwrite(buf + 4, 1, bytes_received - 4, received_file);
-
-        // Send ACK for received block
-        ack_packet = build_ack_packet(received_block_number, &ack_packet_size);
-        if (sendto(sockfd, ack_packet, ack_packet_size, 0, (const struct sockaddr*)client_addr, len) < 0) {
-            perror("Failed to send ACK");
-            free(ack_packet);
-            fclose(received_file);
+        if(send_ack_packet(sockfd,(struct sockaddr*)client_addr,len,received_block_number) == -1){
             return -1;
         }
-        free(ack_packet);
-        block_number = received_block_number; // Update block number for next iteration
+        if(bytes_received < 516){
+            break;
+        }
     }
 
     fclose(received_file);

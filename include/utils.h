@@ -257,8 +257,9 @@ int handle_rrq(char* packet,struct sockaddr_in* client_addr,int sockfd);
 
 char* build_ack_packet(uint16_t block_number, size_t* packet_size);
 char* build_data_packet(uint16_t block_number, const char* data, size_t data_length, size_t* packet_size);
-int send_ack(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number);
-
+int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number);
+int send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
+void print_error_message(char* buf);
 
 
 
