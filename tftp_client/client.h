@@ -3,6 +3,21 @@
 #include "utils.h"
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
+ * @brief Sends a request packet over UDP.
+ * 
+ * Constructs and sends a TFTP request packet to the server specified by addr.
+ * 
+ * @param type The type of request ( RRQ or WRQ )
+ * @param filename The name of the file to read.
+ * @param status The configuration of the client.
+ * @param sockfd The socket file descriptor used to send the packet.
+ * @param addr The address of the server to which the request is sent.
+ * @return Returns 1 on success, -1 on failure with an error message printed to stderr.
+ */
+int request(uint16_t opcode,const char* filename, config status, int sockfd, struct sockaddr* addr);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
  * @brief Initializes a UDP client socket.
  * 
  * This function creates a UDP socket for the client. The socket is not bound to a specific address or port.
@@ -13,8 +28,8 @@
  * @param server_port Port number of the server to connect to.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-//static int connect_to_tftp_server(const char* server_ip, int server_port);
-static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port);
+//
+static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd);
 //----------------------------------------------------------------------------------------------
 /**
  * @brief Sets the file transfer mode.
@@ -23,7 +38,7 @@ static int connect_to_tftp_server(const char* server_ip, int server_port, int cl
  * 
  * @param mode The desired file transfer mode (e.g., "binary" or "ascii").
  */
-static void set_file_transfer_mode(const char* mode);
+static void set_file_transfer_mode(const char* mode,char* transfer_mode);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -33,7 +48,7 @@ static void set_file_transfer_mode(const char* mode);
  * 
  * @param filename The name of the file to send.
  */
-static int send_file(const char* filename);
+static int send_file(const char* filename,config status,struct sockaddr_in addr, int sockfd);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -43,7 +58,7 @@ static int send_file(const char* filename);
  * 
  * @param filename The name of the file to receive.
  */
-static int receive_file(const char* filename);
+static int receive_file(const char* filename, config status,struct sockaddr_in addr,int sockfd) ;
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -59,7 +74,7 @@ static void exit_tftp_client();
  * 
  * This function toggles verbose mode, which controls whether detailed information is displayed during file transfers.
  */
-void toggle_verbose_mode();
+void set_verbose();
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -67,7 +82,7 @@ void toggle_verbose_mode();
  * 
  * This function toggles packet tracing, which controls whether packet-level information is displayed during file transfers.
  */
-void toggle_packet_tracing();
+static void set_trace(config* status);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -75,7 +90,7 @@ void toggle_packet_tracing();
  * 
  * This function displays the current status of the TFTP client, including the server it's connected to and the file transfer mode.
  */
-void show_current_status();
+static void print_status();
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -97,17 +112,11 @@ void set_per_packet_retransmission_timeout(int timeout);
  */
 void set_total_retransmission_timeout(int timeout);
 
-//----------------------------------------------------------------------------------------------
-/**
- * @brief Prints help information.
- * 
- * This function prints help information and usage instructions for the TFTP client.
- */
-static void process_command(const char* command) ;
-static void handle_put_command() ;
-static void handle_get_command();
+static void process_command(config* status,const char* command,struct sockaddr_in addr,int sockfd);
+static void handle_put_command(config status,struct sockaddr_in addr,int sockfd) ;
+static void handle_get_command(config status ,struct sockaddr_in addr,int sockfd);
 static void print_help();
-
+static void print_status(config status);
 
 
 
