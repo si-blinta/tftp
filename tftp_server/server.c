@@ -82,14 +82,14 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     return 0;
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
-    FILE* file_exist = fopen(filename,"r");
-    if( file_exist != NULL){
-        //the file exists
-        fclose(file_exist);
-        send_error_packet(status,FILE_ALREADY_EXISTS,"File already exists",client_addr,sockfd);
+    FILE* received_file = fopen(filename,"r");
+    if( received_file == NULL){
+        //the file doesnt exist:
+        send_error_packet(status,ACCESS_VIOLATION,"Acess violation",client_addr,sockfd);
         return 0;
-    } 
-    FILE* received_file = fopen(filename, "wb"); 
+    }
+    fclose(received_file); 
+    received_file = fopen(filename, "wb"); 
     if (received_file == NULL) {
         send_error_packet(status,NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd);
         return -1;
