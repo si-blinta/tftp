@@ -6,6 +6,7 @@ int request(uint16_t opcode, const char* filename, const char* mode, int sockfd,
     // dynamically allocate the string
     char* packet = malloc(strlen(filename) + strlen(mode) + 4 + 2);
     if (packet == NULL) {
+        fprintf(stderr,"[request] : Failed request\n");
         perror("malloc");
         return -1;
     }
@@ -28,13 +29,14 @@ int request(uint16_t opcode, const char* filename, const char* mode, int sockfd,
 
     // Send the packet
     if (sendto(sockfd, packet, offset, 0, addr, sizeof(*addr)) == -1) {
+        fprintf(stderr,"[request] : Failed request\n");
         perror("[sendto]");
         free(packet); 
         return -1;
     }
 
     free(packet); 
-    return 1;
+    return 0;
 }
 uint16_t get_opcode(char* packet){
     uint16_t opcode;
@@ -113,15 +115,16 @@ size_t convert_to_netascii(char* buffer) {
     buffer[j] = '\0'; 
     return j; 
 }
-int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number) {
+int send_ack_packet(const struct sockaddr* client_addr, uint16_t block_number, int sockfd) {
     size_t packet_size;
     char* ack_packet = build_ack_packet(block_number, &packet_size);
 
-    if (!ack_packet) {
-        return -1; // Failed to build ACK packet
+    if (ack_packet == NULL) {
+        fprintf(stderr,"[send_ack_packet] : failed to build ack packet\n");
+        return -1; 
     }
 
-    size_t bytes_sent = sendto(sockfd, ack_packet, packet_size, 0, dest_addr, addrlen);
+    size_t bytes_sent = sendto(sockfd, ack_packet, packet_size, 0, client_addr, sizeof(*client_addr));
     free(ack_packet); // Free the dynamically allocated ACK packet
 
     if (bytes_sent < 0) {
@@ -129,7 +132,7 @@ int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addr
         return -1;
     }
 
-    return 0; // ACK packet sent successfully
+    return 0;
 }
 void convert_netascii_to_native(char *data, int *length) {
     if(strcmp(PLATFORM_NAME, "windows") == 0) {
@@ -222,13 +225,35 @@ char* build_ack_packet(uint16_t block_number, size_t* packet_size) {
 int send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
     size_t packet_size;
     char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
-        if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
-            perror("[sendto]");
-        }
+    if(error_packet == NULL){
+        fprintf(stderr,"[send_error_packet] : failed to build error packet\n");
+        return -1;
+    }
+    if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
+        perror("[sendto]");
         free(error_packet); 
+        return -1;
+    }
+    free(error_packet); 
+    return 0;
 }
-void print_error_message(char* buf){
-    printf("[ERROR] Code = %d : Message = %s\n", get_error_code(buf), get_error_message(buf));
+int send_data_packet(int block_number,char* data, const struct sockaddr_in* client_addr,int data_length, int sockfd){
+    size_t packet_size;
+    char* data_packet = build_data_packet(block_number,data,data_length,&packet_size);
+    if(data_packet == NULL){
+        fprintf(stderr,"[send_data_packet] : failed to build data packet\n");
+        return -1;
+    }
+    if (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
+        perror("[sendto]");
+        free(data_packet); 
+        return -1;
+    }
+    free(data_packet); 
+    return 0;
+}
+void print_error_message(char* error_packet){
+    printf("[ERROR] Code = %d : Message = %s\n", get_error_code(error_packet), get_error_message(error_packet));
 }
 
 

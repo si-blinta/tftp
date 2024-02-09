@@ -48,15 +48,27 @@ static void print_help() {
         "  ?       \tPrint this help information\n"
     );
 }
-static int connect_to_tftp_server(const char* server_ip, int server_port) {
+static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port) {
+    struct sockaddr_in clientAddr;
+
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
         return -1;
     }
+    memset(&clientAddr, 0, sizeof(clientAddr));
+    clientAddr.sin_family = AF_INET;
+    clientAddr.sin_port = htons(client_port);
+    clientAddr.sin_addr.s_addr = inet_addr(server_ip);
 
+    // Bind the socket with the adress  : not necessary ! Useful for debugging when using WireShark
+    if (bind(sockfd, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
+        perror("[bind]");
+        close(sockfd);  
+        return -1;
+    }
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(server_port); // Specify the server's port
-    addr.sin_addr.s_addr = inet_addr(server_ip); // Specify the server's IP address
+    addr.sin_port = htons(server_port);
+    addr.sin_addr.s_addr = inet_addr(server_ip); 
 
     return 0;
 }
@@ -70,56 +82,50 @@ static int send_file(const char* filename) {
         return -1 ; 
     }
 
-    request(WRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr);
+    if(request(WRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr) == -1){
+        return -1;
+    }
 
-    char buf[516];
+    char ack_packet[MAX_BLOCK_SIZE];
+    char data_packet[MAX_BLOCK_SIZE];
     size_t packet_size, bytes_read;
     socklen_t len = sizeof(addr);
-    char* data_packet;
     int block_number = 0;
 
     // Wait for the initial ACK for the WRQ
-    size_t bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &len);
+    size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&addr, &len);
     if (bytes_received == -1) {
         perror("[recvfrom]");
         fclose(requested_file);
         return -1 ;
     }
 
-    if (get_opcode(buf) == ERROR) {    
-            print_error_message(buf);
+    if (get_opcode(ack_packet) == ERROR) {    
+            print_error_message(ack_packet);
             fclose(requested_file);
             return 0 ;
         }
 #ifdef DEBUG
 printf("______________________________________________________________________\n");
 #endif //DEBUG   
-    while ((bytes_read = fread(buf, 1, 512, requested_file)) > 0) {
+    while ((bytes_read = fread(data_packet, 1, 512, requested_file)) > 0) {
         block_number++;
-        data_packet = build_data_packet(block_number, buf, bytes_read, &packet_size);
-        if (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr*)&addr, len) == -1) {
-            perror("[sendto]");
-            free(data_packet); // Free the allocated memory
-            fclose(requested_file); // Close the file
+        if(send_data_packet(block_number,data_packet,&addr,bytes_read,sockfd) == -1){
             return -1;
-        }
-        free(data_packet); // Free the allocated memory after sending
-
-        // Receive the ACK packet
-        bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &len);
+        };
+        bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&addr, &len);
         if (bytes_received == -1) {
             perror("[recvfrom]");
             fclose(requested_file);
             return -1 ;
         }
 #ifdef DEBUG     
-        if (get_opcode(buf) == ACK && get_block_number(buf) == block_number) {
-   
+        if (get_opcode(ack_packet) == ACK && get_block_number(ack_packet) == block_number) {
             printf("ACK %d\n", block_number);
 #endif //DEBUG       
         } 
-        if (get_opcode(buf) == ERROR) {    
-            print_error_message(buf);
+        if (get_opcode(ack_packet) == ERROR) {    
+            print_error_message(ack_packet);
             fclose(requested_file);
             return 0; 
         }
@@ -130,11 +136,13 @@ printf("______________________________________________________________________\n
         printf("[put] : %s is sent \n",filename);
         printf("______________________________________________________________________\n");
 #endif //DEBUG
-    fclose(requested_file); // Close the file after sending all data
+    fclose(requested_file);
 }
-void receive_file(const char* filename) {
-    request(RRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr);
-    char buf[516];
+static int receive_file(const char* filename) {
+    if(request(RRQ, filename, transfer_mode, sockfd, (struct sockaddr*)&addr) == -1){
+        return -1;
+    }
+    char packet[MAX_BLOCK_SIZE];
     size_t packet_size;
     FILE* requested_file = fopen(filename, "wb");
     if (!requested_file) {
@@ -146,26 +154,27 @@ void receive_file(const char* filename) {
     int block_number = 1;
 
     while (1) {
-        // Receive a data packet
-        size_t bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &len);
+        size_t bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)&addr, &len);
         if (bytes_received == -1) {
             perror("[recvfrom]");
             break;
         }
-        if(get_opcode(buf) == ERROR){
-            printf("[get] : error code = %d : error message : %s\n",get_error_code(buf),get_error_message(buf));
+        if(get_opcode(packet) == ERROR){
+            printf("[get] : error code = %d : error message : %s\n",get_error_code(packet),get_error_message(packet));
             if(remove(filename)){
                 perror("[remove]");
             }
             break;
         }
         
-        fwrite(get_data(buf), 1, bytes_received - 4, requested_file); // 
-        send_ack_packet(sockfd,(struct sockaddr*)&addr,len,block_number);
+        fwrite(get_data(packet), 1, bytes_received - 4, requested_file); 
+        if(send_ack_packet((struct sockaddr*)&addr,block_number,sockfd) == -1){
+            return -1;
+        }
        
         block_number++;
         // Check if this is the last data block
-        if (bytes_received < 516) {
+        if (bytes_received < MAX_BLOCK_SIZE) {
 #ifdef DEBUG
         printf("______________________________________________________________________\n");
         printf("[get] : received %s \n",filename);
@@ -196,28 +205,8 @@ void receive_file(const char* filename) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 int main(int argc, char const* argv[]) {
-    if (connect_to_tftp_server("127.0.0.1",PORT) == -1) {
+    if (connect_to_tftp_server(IP,SERVER_PORT,CLIENT_PORT) == -1) {
         printf("[connect_to_tftp_server] : erreur");
     }
     char command[100];

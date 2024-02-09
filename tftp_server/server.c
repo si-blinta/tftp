@@ -6,15 +6,9 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
         perror("[socket]");
         return -1;
     }
-   	/*struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-    		perror("Error");
-    }*/
     (*addr).sin_family = AF_INET;
-    (*addr).sin_port = htons(port); // Specify the port as an argument
-    (*addr).sin_addr.s_addr = INADDR_ANY; // Listen on all available interfaces
+    (*addr).sin_port = htons(port);
+    (*addr).sin_addr.s_addr = INADDR_ANY;
 
     if (bind(*sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
         perror("[bind]");
@@ -23,33 +17,32 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
     return 0;
 }
 static void handle_client_requests(int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr){
-    char buf[MAX_BLOCK_SIZE];
+    char packet[MAX_BLOCK_SIZE];
     socklen_t len = sizeof(addr);
-    if(recvfrom(sockfd,(char* )buf,516,0,(struct sockaddr *) client_addr,&len) < 0){
-    	//timeout reached
-    	//exit(1);
+    if(recvfrom(sockfd,(char* )packet,516,0,(struct sockaddr *) client_addr,&len) < 0){
+        perror("[recvfrom]");
     }
     
-    uint16_t opcode = get_opcode(buf);
+    uint16_t opcode = get_opcode(packet);
     char* filename ;
     char* mode;
     switch (opcode)
     {
     case RRQ:
-        filename = get_file_name(buf);
-        mode = get_mode(buf);
+        filename = get_file_name(packet);
+        mode = get_mode(packet);
 #ifdef DEBUG
-        print_request_packet(buf);
+        print_request_packet(packet);
 #endif //DEBUG        
         process_rrq(filename,mode,client_addr,sockfd);
         free(filename);
         free(mode);
         break;
     case WRQ :
-        filename = get_file_name(buf);
-        mode = get_mode(buf);
+        filename = get_file_name(packet);
+        mode = get_mode(packet);
 #ifdef DEBUG
-        print_request_packet(buf);
+        print_request_packet(packet);
 #endif //DEBUG   
         process_wrq(filename,mode,client_addr,sockfd);
         free(filename);
@@ -59,7 +52,7 @@ static void handle_client_requests(int sockfd,struct sockaddr_in* addr,struct so
     }    
 }
 static int process_rrq(char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd){
-    char buf[516]; 
+    char ack_packet[516]; 
     size_t packet_size;
     FILE* requested_file = fopen(filename, "rb");
 
@@ -85,20 +78,20 @@ printf("______________________________________________________________________\n
         }
         free(data_packet);
         // Receive the ACK packet for the current block_number
-        if (recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)client_addr, &len) == -1) {
+        if (recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len) == -1) {
             perror("[recvfrom]");
             fclose(requested_file); 
             return -1;
             
         }
 #ifdef DEBUG     
-        if (get_opcode(buf) == ACK && get_block_number(buf) == block_number-1) {
+        if (get_opcode(ack_packet) == ACK && get_block_number(ack_packet) == block_number-1) {
    
             printf("ACK %d\n", block_number-1);
 #endif //DEBUG       
         } 
-        if (get_opcode(buf) == ERROR) {    
-            print_error_message(buf);
+        if (get_opcode(ack_packet) == ERROR) {    
+            print_error_message(ack_packet);
             break; // Exit the loop on error
         }
     }
@@ -128,18 +121,18 @@ static int process_wrq(char* filename, char* mode, const struct sockaddr_in* cli
 
     // Send initial ACK for WRQ to start receiving data
     socklen_t len = sizeof(*client_addr);
-    if(send_ack_packet(sockfd,(struct sockaddr*)client_addr,len,0) == -1){
+    if(send_ack_packet((struct sockaddr*)client_addr,0,sockfd) == -1){
         return -1;
     }
-    char buf[516];
+    char data_packet[516];
     size_t bytes_received; 
 
     while (1) { 
-        bytes_received = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)client_addr, &len);
-        uint16_t received_block_number = get_block_number(buf);
+        bytes_received = recvfrom(sockfd, data_packet, sizeof(data_packet), 0, (struct sockaddr*)client_addr, &len);
+        uint16_t received_block_number = get_block_number(data_packet);
         // Write received data to file
-        fwrite(buf + 4, 1, bytes_received - 4, received_file);
-        if(send_ack_packet(sockfd,(struct sockaddr*)client_addr,len,received_block_number) == -1){
+        fwrite(data_packet + 4, 1, bytes_received - 4, received_file);
+        if(send_ack_packet((struct sockaddr*)client_addr,received_block_number,sockfd) == -1){
             return -1;
         }
         if(bytes_received < 516){
@@ -160,7 +153,7 @@ int main(int argc, char**argv)
 {   
     struct sockaddr_in addr,client_addr;
     int sockfd;
-    if(init_tftp_server(PORT,&sockfd,&addr) == -1){
+    if(init_tftp_server(SERVER_PORT,&sockfd,&addr) == -1){
         printf("[init_udp_socket] : erreur\n");
     }
     while (1)

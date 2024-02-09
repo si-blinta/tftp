@@ -13,8 +13,8 @@
  * @param server_port Port number of the server to connect to.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-static int connect_to_tftp_server(const char* server_ip, int server_port);
-
+//static int connect_to_tftp_server(const char* server_ip, int server_port);
+static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port);
 //----------------------------------------------------------------------------------------------
 /**
  * @brief Sets the file transfer mode.
@@ -43,7 +43,7 @@ static int send_file(const char* filename);
  * 
  * @param filename The name of the file to receive.
  */
-void receive_file(const char* filename);
+static int receive_file(const char* filename);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -107,7 +107,6 @@ static void process_command(const char* command) ;
 static void handle_put_command() ;
 static void handle_get_command();
 static void print_help();
-
 
 
 
