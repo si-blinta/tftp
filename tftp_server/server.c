@@ -48,8 +48,12 @@ static void handle_client_requests(config status,int sockfd,struct sockaddr_in* 
 static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd){
     char ack_packet[516]; 
     size_t packet_size;
-    FILE* requested_file = fopen(filename, "rb");
-
+    FILE* requested_file;
+    //TODO : gerer le cas de netascii
+    if(!strcasecmp(mode,"octet")){
+        requested_file = fopen(filename, "rb");
+    }
+   
     if (requested_file == NULL) {
         send_error_packet(status,FILE_NOT_FOUND,"File does'nt exist",client_addr,sockfd);
         return -1;
@@ -89,7 +93,10 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         return 0;
     }
     fclose(received_file); 
-    received_file = fopen(filename, "wb"); 
+    //TODO : gerer le cas de netascii
+    if(!strcasecmp(mode,"octet")){
+        received_file = fopen(filename, "wb"); 
+    }
     if (received_file == NULL) {
         send_error_packet(status,NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd);
         return -1;

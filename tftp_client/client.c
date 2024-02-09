@@ -61,7 +61,8 @@ static void process_command(config* status,const char* command,struct sockaddr_i
         handle_put_command(*status,addr,sockfd);
     } else if (strcmp(command, "get") == 0) {
         handle_get_command(*status,addr,sockfd);
-    } else if (strcmp(command, "?") == 0) {
+    }
+     else if (strcmp(command, "?") == 0) {
         print_help();
     } else if (strcmp(command, "quit") == 0) {
         printf("Exiting TFTP client.\n");
@@ -95,6 +96,7 @@ static void handle_get_command(config status,struct sockaddr_in addr,int sockfd)
 static void print_help() {
     printf(
         "Commands available:\n"
+        "  connect \tconnect to remote tftp"
         "  put     \tSend file to the server\n"
         "  get     \tReceive file from the server\n"
         "  status  \tShow current status\n"
@@ -142,7 +144,11 @@ static void set_trace(config* status){
 static int send_file(const char* filename,config status,struct sockaddr_in addr, int sockfd) {
     size_t total_bytes_sent = 0;
     time_t start = time(NULL);
-    FILE* requested_file = fopen(filename, "rb");
+    FILE* requested_file ;
+    //TODO : gerer le netascii
+    if(!strcasecmp(status.transfer_mode,"octet")){
+         requested_file= fopen(filename, "rb");
+    }
     if (requested_file == NULL) {
         perror("Failed to open file");
         return -1 ; 
@@ -209,7 +215,11 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
     }
     char packet[MAX_BLOCK_SIZE];
     size_t packet_size;
-    FILE* requested_file = fopen(filename, "wb");
+    FILE* requested_file ;
+    // TODO : gerer le cas netascii
+    if(!strcasecmp(status.transfer_mode,"octet")){
+        requested_file= fopen(filename, "wb");
+    }
     if (!requested_file) {
         perror("Failed to open file");
         fclose(requested_file);
@@ -268,7 +278,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
 
 
 int main(int argc, char const* argv[]) {
-    config status = {.server = IP,.transfer_mode = "netascii",.verbose = 0,.trace = 0,.rexmt = 25,.timemout = 5};
+    config status = {.server = IP,.transfer_mode = "octet",.verbose = 0,.trace = 0,.rexmt = 25,.timemout = 5};
     int sockfd;
     struct sockaddr_in addr;
     if (connect_to_tftp_server(IP,SERVER_PORT,CLIENT_PORT,&addr,&sockfd) == -1) {

@@ -11,6 +11,7 @@
 #include <arpa/inet.h> 
 #include <errno.h>
 #include <time.h>
+#include <strings.h>
 #define SERVER_PORT 8080
 #define CLIENT_PORT 8081
 #define IP "127.0.0.1"
