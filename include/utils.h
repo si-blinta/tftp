@@ -11,7 +11,7 @@
 #include <arpa/inet.h> 
 #include <errno.h>
 #include <time.h>
-#define SERVER_PORT 8080
+#define SERVER_PORT 69
 #define CLIENT_PORT 8081
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516

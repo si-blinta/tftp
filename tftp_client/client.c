@@ -140,6 +140,8 @@ static void set_trace(config* status){
 
 }
 static int send_file(const char* filename,config status,struct sockaddr_in addr, int sockfd) {
+    size_t total_bytes_sent = 0;
+    time_t start = time(NULL);
     FILE* requested_file = fopen(filename, "rb");
     if (requested_file == NULL) {
         perror("Failed to open file");
@@ -176,6 +178,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
         if(send_data_packet(status,block_number,data_packet,&addr,bytes_read,sockfd) == -1){
             return -1;
         }
+        total_bytes_sent+= bytes_read;
         bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&addr, &len);
         if (bytes_received == -1) {
             perror("[recvfrom]");
@@ -194,6 +197,8 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
     }
 
     fclose(requested_file);
+    time_t end = time(NULL);
+    printf("Sent %ld bytes in %lf secondes\n",total_bytes_sent,difftime(end, start));
     return 0;
 }
 static int receive_file(const char* filename, config status ,struct sockaddr_in addr,int sockfd) {
@@ -218,7 +223,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             fclose(requested_file);
             return -1;
         }
-        total_bytes_received+= bytes_received;
+        total_bytes_received+= bytes_received-4; // minus opcode and block_number
         if(status.trace){
             trace_received(packet,bytes_received);
         }
@@ -263,7 +268,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
 
 
 int main(int argc, char const* argv[]) {
-    config status = {.server = IP,.transfer_mode = "netascii",.verbose = 0,.trace = 0,.rexmt = 0,.timemout = 0};
+    config status = {.server = IP,.transfer_mode = "netascii",.verbose = 0,.trace = 0,.rexmt = 25,.timemout = 5};
     int sockfd;
     struct sockaddr_in addr;
     if (connect_to_tftp_server(IP,SERVER_PORT,CLIENT_PORT,&addr,&sockfd) == -1) {
