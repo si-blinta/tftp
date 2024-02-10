@@ -8,10 +8,24 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
-#include <arpa/inet.h>
+#include <arpa/inet.h> 
 #include <errno.h>
-#define PORT 8080
+#include <time.h>
+#include <strings.h>
+#define SERVER_PORT 8080
+#define CLIENT_PORT 8081
+#define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
+typedef struct {
+    char* server ;
+    char* transfer_mode;
+    uint8_t verbose;
+    uint8_t trace;
+    uint8_t rexmt ;
+    uint8_t timemout;
+}config;
+
+
 #if defined(_WIN32) || defined(_WIN64)
     // Windows (32-bit and 64-bit)
     #define PLATFORM_NAME "windows"
@@ -19,7 +33,7 @@
     // UNIX
     #define PLATFORM_NAME "unix"
 #endif
-//Remarques : htons ? 
+
 
 /**
  * important informations about packets :
@@ -107,21 +121,6 @@ enum error {
 
 
 
-
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief Sends a request packet over UDP.
- * 
- * Constructs and sends a TFTP request packet to the server specified by addr.
- * 
- * @param type The type of request ( RRQ or WRQ )
- * @param filename The name of the file to read.
- * @param mode The transfer mode ("netascii", "octet", or "mail").
- * @param sockfd The socket file descriptor used to send the packet.
- * @param addr The address of the server to which the request is sent.
- * @return Returns 1 on success, -1 on failure with an error message printed to stderr.
- */
-int request(uint16_t opcode,const char* filename, const char* mode, int sockfd, struct sockaddr* addr);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -224,45 +223,97 @@ size_t convert_to_netascii(char* buffer);
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * @brief TODO
+ * @brief Extracts the block number of a DATA/ACK packet.
  * 
- * @param data TODO
- * @param length TODO
- * @return TODO.
+ * @param packet Data packet or acknowledgement packet.
+ * @return block number.
  */
 uint16_t get_block_number(char* packet);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
- * @brief TODO
+ * @brief Extracts the block number of a DATA packet.
  * 
- * @param data TODO
- * @param length TODO
- * @return TODO.
+ * @param packet Data packet.
+ * @return the Data.
  */
 char* get_data(char* packet);
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
- * @brief TODO
+ * @brief print the data packet , for debugging.
  * 
- * @param data TODO
- * @param length TODO
- * @return TODO.
+ * @param packet Data packet
+ * @return nothing.
  */
 void print_data_packet(char* packet);
-//TODO
-int handle_request(char* packet, struct sockaddr_in* client_addr,int sockfd);
 
-//TODO : gérer les modes netascii , octet et email
-int handle_rrq(char* packet,struct sockaddr_in* client_addr,int sockfd);
-
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief builds an ACK packet
+ * @param block_number block #
+ * @param packet_size  a pointer to packet_size to affect it with the real size of the block.
+ * @return A pointer to a dynamically allocated string containing the ack packet. Caller must free this string.
+ */
 char* build_ack_packet(uint16_t block_number, size_t* packet_size);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief builds a DATA packet
+ * @param block_number block #.
+ * @param data the data.
+ * @param data_length the size of the data.
+ * @param packet_size  a pointer to packet_size to affect it with the real size of the block.
+ * @return A pointer to a dynamically allocated string containing the data packet. Caller must free this string.
+ */
 char* build_data_packet(uint16_t block_number, const char* data, size_t data_length, size_t* packet_size);
-int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number);
-int send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
-void print_error_message(char* buf);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Sends an ACK packet over UDP.
+ * 
+ * Constructs and sends a TFTP ack packet to the server specified by addr.
+ * @param status The configuration of the caller (serverside is for debug only).
+ * @param client_addr The address of the server to which the acknowledgement is sent.
+ * @param block_number The block # to acknowledge.
+ * @param sockfd The socket file descriptor used to send the packet.
+ * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
+ */
+int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Sends an error packet over UDP.
+ * Constructs and sends a TFTP error packet to the server specified by addr.
+ * @param dest_addr The address of the server to which the error is sent.
+ * @param block_number The block # to acknowledge.
+ * @param sockfd The socket file descriptor used to send the packet.
+ * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
+ */
+int send_error_packet(config status,int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Sends a data packet over UDP.
+ * Constructs and sends a TFTP data packet to the server specified by addr.
+ * @param block_number The block # for the data sent.
+ * @param data The data sent.
+ * @param client_addr The address of the server to which the data is sent.
+ * @param data_length the size of the data.
+ * @param sockfd The socket file descriptor used to send the packet.
+ * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
+ */
+int send_data_packet(config status,int block_number,char* data, const struct sockaddr_in* client_addr,int data_length, int sockfd);
 
 
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Prints error message of an error packet.
+ * @param error_packet The error packet.
+ * @return Nothing
+ */
+void print_error_message(char* error_packet);
+void trace_sent(char* packet,size_t packet_size);
+void trace_received(char* packet,size_t packet_size);
 
 
 

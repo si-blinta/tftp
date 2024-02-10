@@ -1,41 +1,4 @@
 #include "utils.h"
-int request(uint16_t opcode, const char* filename, const char* mode, int sockfd, struct sockaddr* addr) {
-    //the zero byte
-    u_int8_t end_of_file = 0;
-    int offset = 0;
-    // dynamically allocate the string
-    char* packet = malloc(strlen(filename) + strlen(mode) + 4 + 2);
-    if (packet == NULL) {
-        perror("malloc");
-        return -1;
-    }
-
-    // Convert to network byte
-    uint16_t net_opcode = htons(opcode);
-    memcpy(packet + offset, &net_opcode, sizeof(net_opcode));
-    offset += sizeof(net_opcode);
-
-    // Copy the filename and mode
-    memcpy(packet + offset, filename, strlen(filename));
-    offset += strlen(filename);
-    //zero byte
-    packet[offset++] = end_of_file;
-
-    memcpy(packet + offset, mode, strlen(mode));
-    offset += strlen(mode);
-    //zero byte
-    packet[offset++] = end_of_file; //Increment offset so we can get the total size of the packet
-
-    // Send the packet
-    if (sendto(sockfd, packet, offset, 0, addr, sizeof(*addr)) == -1) {
-        perror("[sendto]");
-        free(packet); 
-        return -1;
-    }
-
-    free(packet); 
-    return 1;
-}
 uint16_t get_opcode(char* packet){
     uint16_t opcode;
     memcpy(&opcode, packet, sizeof(opcode));
@@ -74,7 +37,7 @@ void print_error_packet(char* packet){
 }
 uint16_t get_error_code(char* packet){
     uint16_t error_code;
-    memcpy(&error_code, packet + 2, sizeof(error_code)); // Copie correctement les 2 octets
+    memcpy(&error_code, packet + 2, sizeof(error_code)); 
     return ntohs(error_code); // Conversion nécessaire
 }
 char* get_error_message(char* packet){
@@ -84,7 +47,7 @@ char* get_error_message(char* packet){
 }
 uint16_t get_block_number(char* packet){
     uint16_t block_number;
-    memcpy(&block_number, packet + 2, sizeof(block_number)); // Copie correctement les 2 octets
+    memcpy(&block_number, packet + 2, sizeof(block_number));
     return ntohs(block_number); // Conversion nécessaire
 }
 char* get_data(char* packet){
@@ -113,23 +76,27 @@ size_t convert_to_netascii(char* buffer) {
     buffer[j] = '\0'; 
     return j; 
 }
-int send_ack_packet(int sockfd, const struct sockaddr* dest_addr, socklen_t addrlen, uint16_t block_number) {
+int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd) {
     size_t packet_size;
     char* ack_packet = build_ack_packet(block_number, &packet_size);
 
-    if (!ack_packet) {
-        return -1; // Failed to build ACK packet
+    if (ack_packet == NULL) {
+        fprintf(stderr,"[send_ack_packet] : failed to build ack packet\n");
+        return -1; 
     }
 
-    size_t bytes_sent = sendto(sockfd, ack_packet, packet_size, 0, dest_addr, addrlen);
-    free(ack_packet); // Free the dynamically allocated ACK packet
+    size_t bytes_sent = sendto(sockfd, ack_packet, packet_size, 0, client_addr, sizeof(*client_addr));
+
 
     if (bytes_sent < 0) {
         perror("Failed to send ACK packet");
         return -1;
     }
-
-    return 0; // ACK packet sent successfully
+    if(status.trace){
+        trace_sent(ack_packet,packet_size);
+    }
+    free(ack_packet);
+    return 0;
 }
 void convert_netascii_to_native(char *data, int *length) {
     if(strcmp(PLATFORM_NAME, "windows") == 0) {
@@ -219,16 +186,114 @@ char* build_ack_packet(uint16_t block_number, size_t* packet_size) {
 
     return packet;
 }
-int send_error_packet(int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
+int send_error_packet(config status,int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
     size_t packet_size;
     char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
-        if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
-            perror("[sendto]");
-        }
+    if(error_packet == NULL){
+        fprintf(stderr,"[send_error_packet] : failed to build error packet\n");
+        return -1;
+    }
+    if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
+        perror("[sendto]");
         free(error_packet); 
+        return -1;
+    }
+    if(status.trace){
+        trace_sent(error_packet,packet_size);
+    }
+    free(error_packet); 
+    return 0;
 }
-void print_error_message(char* buf){
-    printf("[ERROR] Code = %d : Message = %s\n", get_error_code(buf), get_error_message(buf));
+int send_data_packet(config status,int block_number,char* data, const struct sockaddr_in* client_addr,int data_length, int sockfd){
+    size_t packet_size;
+    char* data_packet = build_data_packet(block_number,data,data_length,&packet_size);
+    if(data_packet == NULL){
+        fprintf(stderr,"[send_data_packet] : failed to build data packet\n");
+        return -1;
+    }
+    if (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
+        perror("[sendto]");
+        free(data_packet); 
+        return -1;
+    }
+    if(status.trace){
+        trace_sent(data_packet,packet_size);
+    }
+    free(data_packet); 
+    return 0;
+}
+void print_error_message(char* error_packet){
+    printf("[ERROR] Code = %d : Message = %s\n", get_error_code(error_packet), get_error_message(error_packet));
+}
+void trace_sent(char* packet,size_t packet_size){
+    char* filename = NULL;
+    char* transfer_mode = NULL;
+    switch(get_opcode(packet)){
+        case RRQ:{
+            filename = get_file_name(packet);
+            transfer_mode= get_mode(packet);
+            printf("sent RRQ <file=%s, mode=%s>\n",filename,transfer_mode);
+            free(filename);
+            free(transfer_mode);
+            break;
+        }
+        case WRQ:{
+            filename = get_file_name(packet);
+            transfer_mode = get_mode(packet);
+            printf("sent WRQ <file=%s, mode=%s>\n",filename,transfer_mode);
+            free(filename);
+            free(transfer_mode);
+            break;
+        }
+        case ACK:{
+            printf("sent ACK <block=%d>\n",get_block_number(packet));
+            break;
+        }
+        case DATA:{
+            printf("sent DATA <block=%d, %ld bytes>\n",get_block_number(packet),packet_size);
+            break;
+        }
+        case ERROR:{
+            char* error_msg = get_error_message(packet);
+            printf("sent ERROR <code=%d, msg=%s>\n",get_error_code(packet),error_msg);
+            free(error_msg);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
-
+void trace_received(char* packet,size_t packet_size){
+    char* filename = NULL;
+    char* transfer_mode = NULL;
+    switch(get_opcode(packet)){
+        case RRQ:
+            filename = get_file_name(packet);
+            transfer_mode= get_mode(packet);
+            printf("received RRQ <file=%s, mode=%s>\n",filename,transfer_mode);
+            free(filename);
+            free(transfer_mode);
+            break;
+        case WRQ:
+            filename = get_file_name(packet);
+            transfer_mode = get_mode(packet);
+            printf("received WRQ <file=%s, mode=%s>\n",filename,transfer_mode);
+            free(filename);
+            free(transfer_mode);
+            break;
+        case ACK:
+            printf("received ACK <block=%d>\n",get_block_number(packet));
+            break;
+        case DATA:
+            printf("received DATA <block=%d, %ld bytes>\n",get_block_number(packet),packet_size);
+            break;
+        case ERROR:
+            char* error_msg = get_error_message(packet);
+            printf("received ERROR <code=%d, msg=%s>\n",get_error_code(packet),get_error_message(packet));
+            free(error_msg);
+            break;
+        default:
+            break;
+    }
+}

@@ -23,7 +23,7 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr);
  * 
  * @param sockfd The socket file descriptor used to listen for incoming requests.
  */
-static void handle_client_requests(int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr);
+static void handle_client_requests(config status,int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -36,7 +36,7 @@ static void handle_client_requests(int sockfd,struct sockaddr_in* addr,struct so
  * @param sockfd The socket file descriptor for communicating with the client.
  * @return Returns 0 on success, -1 on failure.
  */
-static int process_rrq(char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
+static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
 //-------------------------------------------------------------------------------------
 /**
  * @brief Processes a write request from a client.
@@ -48,7 +48,7 @@ static int process_rrq(char* filename,char* mode, const struct sockaddr_in* clie
  * @param sockfd The socket file descriptor for communicating with the client.
  * @return Returns 0 on success, -1 on failure.
  */
-static int process_wrq(char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
+static int process_wrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
 
 //-------------------------------------------------------------------------------------
 /**
