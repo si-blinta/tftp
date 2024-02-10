@@ -6,12 +6,13 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
         perror("[socket]");
         return -1;
     }
-   	/*struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-    		perror("Error");
-    }*/
+    struct timeval tv;
+    tv.tv_sec = 10;
+    tv.tv_usec = 0;
+    if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+    {
+        perror("Error");
+    }
     (*addr).sin_family = AF_INET;
     (*addr).sin_port = htons(port); // Specify the port as an argument
     (*addr).sin_addr.s_addr = INADDR_ANY; // Listen on all available interfaces
@@ -77,11 +78,16 @@ printf("______________________________________________________________________\n
 #endif //DEBUG   
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
         char* data_packet = build_data_packet(block_number++, data, bytes_read, &packet_size);
-        if (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr*)client_addr, len) == -1) {
-            perror("[sendto]");
-            free(data_packet);
-            fclose(requested_file); 
-            return -1;
+        while (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr *)client_addr, len) == -1)
+        {
+            printf("Renvoi paquet");
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                perror("[sendto]");
+                free(data_packet);
+                fclose(requested_file);
+                return -1;
+            }
         }
         free(data_packet);
         // Receive the ACK packet for the current block_number
