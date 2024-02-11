@@ -14,6 +14,9 @@
 #include <strings.h>
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
+
+#define PACKET_LOSS_RATE 50
+
 typedef struct {
     char* server ;          // server ip
     char* transfer_mode;    // transfer mode , we only implemented octet
@@ -299,8 +302,13 @@ void trace_sent(char* packet,size_t packet_size);
  */
 void trace_received(char* packet,size_t packet_size);
 
-
-
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Simulates packet loss chance.
+ * @param loss_percentage The percentage of packet loss occuring.
+ * @return Nothing
+ */
+int packet_loss(int loss_percentage);
 
 
 

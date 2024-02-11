@@ -1,7 +1,7 @@
 #include "server.h"
 
 
-static int init_tftp_server(int per_packet_timeout ,int port,int* sockfd,struct sockaddr_in* addr) {
+static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
         return -1;
@@ -10,12 +10,6 @@ static int init_tftp_server(int per_packet_timeout ,int port,int* sockfd,struct 
     (*addr).sin_port = htons(port);
     (*addr).sin_addr.s_addr = INADDR_ANY;
     
-    struct timeval timeout;      
-    timeout.tv_sec = per_packet_timeout ;
-    timeout.tv_usec = 0;
-    if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
-        perror("[setsockopt]\n");
-    }
     if (bind(*sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
         perror("[bind]");
         return -1;
@@ -58,6 +52,20 @@ static int handle_client_requests(config status,int sockfd,struct sockaddr_in* a
     return 0;    
 }
 static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd){
+    // We need to make to set the recvfrom time out :
+    struct timeval timeout;      
+    timeout.tv_sec = status.rexmt ;
+    timeout.tv_usec = 0;
+    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt][process_rrq]\n");
+    }    
+    
+    /** TODO: implementing total time out , i think we need to use signals
+     * total time out is used for these cases :
+     *  - When the last data packet is sent to the user but the user ack packet got lost.
+     *  - To limit the total time out , maybe there is a network problem , so its better to cancel the request.
+     * */ 
+
     char ack_packet[516]; 
     size_t packet_size;
     FILE* requested_file;
@@ -78,10 +86,13 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     socklen_t len = sizeof(*client_addr);
 
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
-        send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
-
+        printf("attempt sending data %d\n",block_number);
+        if(packet_loss(PACKET_LOSS_RATE)){
+            send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+        }
+       
         size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
-        while( bytes_received == -1 ) {
+        while (bytes_received == -1) {
             
             //Error recvfrom
 
@@ -94,7 +105,11 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             // Time out recvfrom : didnt receive ACK packet
 
             // Resend data
-            send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+            printf("attempt sending data %d\n",block_number);
+            if(packet_loss(PACKET_LOSS_RATE)){
+                send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+            }
+          
 
             // Wait for ack again
             bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
@@ -167,16 +182,17 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
 
 int main(int argc, char**argv)
 {   
+    srand(time(NULL));
     if(argc < 2){
         printf("USAGE ./server [port]\n");
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 2,.timemout = 25};
+    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 1,.timemout = 10};
     struct sockaddr_in addr,client_addr;
     int sockfd;
     int error = 0;
-    if(init_tftp_server(status.rexmt,server_port,&sockfd,&addr) == -1){
+    if(init_tftp_server(server_port,&sockfd,&addr) == -1){
         printf("[init_udp_socket] : erreur\n");
     }
     while (!error)

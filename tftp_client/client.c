@@ -118,12 +118,12 @@ static int connect_to_tftp_server(int per_packet_timout,const char* server_ip, i
     clientAddr.sin_port = htons(client_port);
     clientAddr.sin_addr.s_addr = inet_addr(server_ip);
 
-    struct timeval timeout;      
+    /*struct timeval timeout;      
     timeout.tv_sec = per_packet_timout;
     timeout.tv_usec = 0;
     if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
         perror("[setsockopt]\n");
-    }
+    }*/
 
     // Bind the socket with the adress  : not necessary ! Useful for debugging when using WireShark
     if (bind(*sockfd, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
@@ -222,8 +222,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
     size_t packet_size;
     FILE* requested_file ;
     socklen_t len = sizeof(addr);
-    int block_number = 0;
-    int first_request = 1;
+    int last_block_number_received = 0; // starts with a number != 1
     // TODO : gerer le cas netascii
     if(!strcasecmp(status.transfer_mode,"octet")){
         requested_file= fopen(filename, "wb");
@@ -247,7 +246,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             return -1;
           
         }
-        block_number ++;
+     
         total_bytes_received+= bytes_received-4; // minus opcode and block_number
         if(status.trace){
             trace_received(packet,bytes_received);
@@ -260,12 +259,18 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             }
             return -1;
         }
-        if(send_ack_packet(status,(struct sockaddr*)&addr,block_number,sockfd) == -1){
-            return -1;
+        printf("attempt sending ack %d\n",get_block_number(packet));
+        if(packet_loss(PACKET_LOSS_RATE)){
+            if(send_ack_packet(status,(struct sockaddr*)&addr,get_block_number(packet),sockfd) == -1){
+                return -1;
+            }
         }
         
-        fwrite(get_data(packet), 1, bytes_received - 4, requested_file); 
-
+        
+        if(last_block_number_received != get_block_number(packet)){
+            fwrite(get_data(packet), 1, bytes_received - 4, requested_file);
+            last_block_number_received = get_block_number(packet);
+        }
         // Check if this is the last data block
         if (bytes_received < MAX_BLOCK_SIZE) {
             break;
@@ -282,11 +287,12 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
 
 
 int main(int argc, char const* argv[]) {
+    srand(time(NULL));
     if(argc < 4){
         printf("USAGE ./client [client port] [ip] [port]\n");
         return 0;
     }
-    config status = {.server = (char*)argv[2],.transfer_mode = "octet",.trace = 0,.rexmt = 2,.timemout = 25};
+    config status = {.server = (char*)argv[2],.transfer_mode = "octet",.trace = 0,.rexmt = 1,.timemout = 10};
     int server_port = atoi(argv[3]);
     int client_port = atoi(argv[1]);
     int sockfd;
