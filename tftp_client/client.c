@@ -260,11 +260,12 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             }
             return -1;
         }
-        fwrite(get_data(packet), 1, bytes_received - 4, requested_file); 
-
         if(send_ack_packet(status,(struct sockaddr*)&addr,block_number,sockfd) == -1){
             return -1;
         }
+        
+        fwrite(get_data(packet), 1, bytes_received - 4, requested_file); 
+
         // Check if this is the last data block
         if (bytes_received < MAX_BLOCK_SIZE) {
             break;

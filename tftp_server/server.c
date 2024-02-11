@@ -112,8 +112,9 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     }
 
     fclose(requested_file); 
-    return 0;
     printf("RRQ SUCCESS\n");
+    return 0;
+    
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
     char path[100] = SERVER_DIRECTORY;
