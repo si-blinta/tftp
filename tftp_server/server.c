@@ -1,7 +1,7 @@
 #include "server.h"
 
 
-static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
+static int init_tftp_server(config status,int port,int* sockfd,struct sockaddr_in* addr) {
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
         return -1;
@@ -10,12 +10,12 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
     (*addr).sin_port = htons(port);
     (*addr).sin_addr.s_addr = INADDR_ANY;
     
-    /*struct timeval timeout;      
-    timeout.tv_sec = 5;
+    struct timeval timeout;      
+    timeout.tv_sec = status.rexmt;
     timeout.tv_usec = 0;
     if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
         perror("[setsockopt]\n");
-    }*/
+    }
     if (bind(*sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
         perror("[bind]");
         return -1;
@@ -27,8 +27,11 @@ static int handle_client_requests(config status,int sockfd,struct sockaddr_in* a
     char packet[MAX_BLOCK_SIZE];
     socklen_t len = sizeof(*client_addr);
     if(recvfrom(sockfd,(char* )packet,516,0,(struct sockaddr *) client_addr,&len) < 0){
-        perror("[recvfrom][handle_client_requests]");
-        return -1;
+        if(errno != EAGAIN && errno != EWOULDBLOCK){
+            perror("[recvfrom][handle_client_requests]");
+            return -1;
+        }
+    return 0;    
     }
     
     uint16_t opcode = get_opcode(packet);
@@ -51,7 +54,8 @@ static int handle_client_requests(config status,int sockfd,struct sockaddr_in* a
         free(mode);
     default:
         break;
-    }    
+    }
+    return 0;    
 }
 static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd){
     char ack_packet[516]; 
@@ -75,12 +79,26 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
 
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
         send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
-        // Receive the ACK packet for the current block_number
+
         size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
-        if( bytes_received == -1 ) {
-            perror("[recvfrom]");
-            fclose(requested_file); 
-            return -1;
+        while( bytes_received == -1 ) {
+            
+            //Error recvfrom
+
+            if(errno != EAGAIN && errno != EWOULDBLOCK){
+                perror("[recvfrom]");
+                fclose(requested_file); 
+                return -1;
+            }
+
+            // Time out recvfrom : didnt receive ACK packet
+
+            // Resend data
+            send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+
+            // Wait for ack again
+            bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
+
         }
         //Increment block number when an ack is received
         block_number++ ;
@@ -153,15 +171,16 @@ int main(int argc, char**argv)
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 0,.timemout = 0};
+    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 2,.timemout = 10};
     struct sockaddr_in addr,client_addr;
     int sockfd;
-    if(init_tftp_server(server_port,&sockfd,&addr) == -1){
+    int error = 0;
+    if(init_tftp_server(status,server_port,&sockfd,&addr) == -1){
         printf("[init_udp_socket] : erreur\n");
     }
-    while (1)
+    while (!error)
     {
-     handle_client_requests(status,sockfd,&addr,&client_addr);
+        error = handle_client_requests(status,sockfd,&addr,&client_addr);
     }
     
 }

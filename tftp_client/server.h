@@ -8,12 +8,12 @@
  * @brief Initializes a UDP server socket.
  * 
  * This function creates a UDP socket and binds it to a specified port to listen for incoming client requests.
- * @param status Config to set timer.
+ * 
  * @param sockfd Pointer to an integer where the socket file descriptor will be stored.
  * @param port Port number on which the server will listen for incoming connections.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-static int init_tftp_server(config status,int port,int* sockfd,struct sockaddr_in* addr);
+static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr);
 
 //-------------------------------------------------------------------------------------
 /**

@@ -15,12 +15,14 @@
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
 typedef struct {
-    char* server ;
-    char* transfer_mode;
-    uint8_t trace;
-    uint8_t rexmt ;
-    uint8_t timemout;
+    char* server ;          // server ip
+    char* transfer_mode;    // transfer mode , we only implemented octet
+    uint8_t trace;          // tracing packets : for debugging 
+    uint8_t rexmt ;         // per-packet retransmission timeout
+    uint8_t timemout;       // total retransmission timeout
 }config;
+
+
 // BUG : if the file size = 0;
 
 
