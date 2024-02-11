@@ -233,6 +233,12 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             fclose(requested_file);
             return -1;
         }
+        
+        //Check if data is empty 
+        if(bytes_received == 4){
+            break;
+        }
+        
         total_bytes_received+= bytes_received-4; // minus opcode and block_number
         if(status.trace){
             trace_received(packet,bytes_received);

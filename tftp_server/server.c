@@ -50,13 +50,15 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     char ack_packet[516]; 
     size_t packet_size;
     FILE* requested_file;
+    char path[100] = SERVER_DIRECTORY;
+    strcat(path,filename);
     //TODO : gerer le cas de netascii
     if(!strcasecmp(mode,"octet")){
-        requested_file = fopen(filename, "rb");
+        requested_file = fopen(path, "rb");
     }
    
     if (requested_file == NULL) {
-        send_error_packet(status,FILE_NOT_FOUND,"File does'nt exist",client_addr,sockfd);
+        send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_addr,sockfd);
         return -1;
     }
 
@@ -64,6 +66,13 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     size_t bytes_read = 0;
     int block_number = 1;
     socklen_t len = sizeof(*client_addr);
+    
+    // We send the data even if it is empty , like official tftp client does
+    
+    bytes_read = fread(data, 1, 512, requested_file);
+    send_data_packet(status,block_number++,data,client_addr,bytes_read,sockfd);
+    
+    // Not empty
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
         send_data_packet(status,block_number++,data,client_addr,bytes_read,sockfd);
         // Receive the ACK packet for the current block_number
@@ -87,7 +96,9 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     return 0;
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
-    FILE* received_file = fopen(filename,"r");
+    char path[100] = SERVER_DIRECTORY;
+    strcat(path,filename);
+    FILE* received_file = fopen(path,"r");
     if( received_file == NULL){
         //the file doesnt exist:
         send_error_packet(status,ACCESS_VIOLATION,"Acess violation",client_addr,sockfd);
@@ -96,7 +107,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     fclose(received_file); 
     //TODO : gerer le cas de netascii
     if(!strcasecmp(mode,"octet")){
-        received_file = fopen(filename, "wb"); 
+        received_file = fopen(path, "wb"); 
     }
     if (received_file == NULL) {
         send_error_packet(status,NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd);

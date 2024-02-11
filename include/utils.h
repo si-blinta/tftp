@@ -21,15 +21,7 @@ typedef struct {
     uint8_t rexmt ;
     uint8_t timemout;
 }config;
-
-
-#if defined(_WIN32) || defined(_WIN64)
-    // Windows (32-bit and 64-bit)
-    #define PLATFORM_NAME "windows"
-#elif defined(__unix__) || defined(__unix)
-    // UNIX
-    #define PLATFORM_NAME "unix"
-#endif
+// BUG : if the file size = 0;
 
 
 /**
