@@ -21,7 +21,7 @@ int request(uint16_t opcode,const char* filename, config status, int sockfd, str
  * @brief Initializes a UDP client socket.
  * 
  * This function creates a UDP socket for the client. The socket is not bound to a specific address or port.
- * 
+ * @param per_packet_timeout time out value .
  * @param addr Pointer to struct sockaddr_in where client address and port are specified. Not used in this function but included for symmetry with server initialization.
  * @param sockfd Pointer to an integer where the socket file descriptor will be stored.
  * @param server_ip IP address of the server to connect to.
@@ -29,7 +29,7 @@ int request(uint16_t opcode,const char* filename, config status, int sockfd, str
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
 //
-static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd);
+static int connect_to_tftp_server(int per_packet_timeout,const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd);
 //----------------------------------------------------------------------------------------------
 /**
  * @brief Sets the file transfer mode.

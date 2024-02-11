@@ -1,7 +1,7 @@
 #include "server.h"
 
 
-static int init_tftp_server(config status,int port,int* sockfd,struct sockaddr_in* addr) {
+static int init_tftp_server(int per_packet_timeout ,int port,int* sockfd,struct sockaddr_in* addr) {
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
         return -1;
@@ -11,7 +11,7 @@ static int init_tftp_server(config status,int port,int* sockfd,struct sockaddr_i
     (*addr).sin_addr.s_addr = INADDR_ANY;
     
     struct timeval timeout;      
-    timeout.tv_sec = status.rexmt;
+    timeout.tv_sec = per_packet_timeout ;
     timeout.tv_usec = 0;
     if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
         perror("[setsockopt]\n");
@@ -172,11 +172,11 @@ int main(int argc, char**argv)
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 2,.timemout = 10};
+    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.rexmt = 2,.timemout = 25};
     struct sockaddr_in addr,client_addr;
     int sockfd;
     int error = 0;
-    if(init_tftp_server(status,server_port,&sockfd,&addr) == -1){
+    if(init_tftp_server(status.rexmt,server_port,&sockfd,&addr) == -1){
         printf("[init_udp_socket] : erreur\n");
     }
     while (!error)

@@ -106,7 +106,7 @@ static void print_help() {
         "  ?       \tPrint this help information\n"
     );
 }
-static int connect_to_tftp_server(const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd) {
+static int connect_to_tftp_server(int per_packet_timout,const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd) {
     struct sockaddr_in clientAddr;
 
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -118,12 +118,12 @@ static int connect_to_tftp_server(const char* server_ip, int server_port, int cl
     clientAddr.sin_port = htons(client_port);
     clientAddr.sin_addr.s_addr = inet_addr(server_ip);
 
-    /*struct timeval timeout;      
-    timeout.tv_sec = 1;
+    struct timeval timeout;      
+    timeout.tv_sec = per_packet_timout;
     timeout.tv_usec = 0;
     if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
         perror("[setsockopt]\n");
-    }*/
+    }
 
     // Bind the socket with the adress  : not necessary ! Useful for debugging when using WireShark
     if (bind(*sockfd, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
@@ -286,12 +286,12 @@ int main(int argc, char const* argv[]) {
         printf("USAGE ./client [client port] [ip] [port]\n");
         return 0;
     }
-    config status = {.server = (char*)argv[2],.transfer_mode = "octet",.trace = 0,.rexmt = 25,.timemout = 5};
+    config status = {.server = (char*)argv[2],.transfer_mode = "octet",.trace = 0,.rexmt = 2,.timemout = 25};
     int server_port = atoi(argv[3]);
     int client_port = atoi(argv[1]);
     int sockfd;
     struct sockaddr_in addr;
-    if (connect_to_tftp_server(status.server,server_port,client_port,&addr,&sockfd) == -1) {
+    if (connect_to_tftp_server(status.rexmt,status.server,server_port,client_port,&addr,&sockfd) == -1) {
         printf("[connect_to_tftp_server] : erreur");
     }
     char command[100];
