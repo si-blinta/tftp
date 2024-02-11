@@ -12,14 +12,11 @@
 #include <errno.h>
 #include <time.h>
 #include <strings.h>
-#define SERVER_PORT 8080
-#define CLIENT_PORT 8081
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
 typedef struct {
     char* server ;
     char* transfer_mode;
-    uint8_t verbose;
     uint8_t trace;
     uint8_t rexmt ;
     uint8_t timemout;
@@ -199,29 +196,6 @@ void print_error_packet(char* packet);
  */
 char* build_error_packet(uint16_t error_code, char* error_msg,size_t* packet_size);
 
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief Converts text from Unix/Linux line endings (LF) to Netascii line endings (CR LF).
- *
- * @param buffer A pointer to the input text buffer to be converted. This buffer is expected
- *              to contain text using Unix/Linux line endings (LF).
- *
- * @return The length of the converted text. This length may be
- *         greater than the input length if line endings were converted.
- */
-size_t convert_to_netascii(char* buffer);
-
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief Converts text from Netascii format to the native end-of-line format.
- * 
- * @param data The Netascii text data to be converted, modified in place.
- * @param length Pointer to an integer representing the length of the input data. The function updates this value to reflect the length of the converted text.
- * @return Nothing.
- */
-
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-
 /**
  * @brief Extracts the block number of a DATA/ACK packet.
  * 
@@ -312,7 +286,23 @@ int send_data_packet(config status,int block_number,char* data, const struct soc
  * @return Nothing
  */
 void print_error_message(char* error_packet);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Prints informations sent.
+ * @param packet The error packet.
+ * @param packet_size The size of the packet.
+ * @return Nothing
+ */
 void trace_sent(char* packet,size_t packet_size);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Prints informations received.
+ * @param packet The error packet.
+ * @param packet_size The size of the packet.
+ * @return Nothing
+ */
 void trace_received(char* packet,size_t packet_size);
 
 

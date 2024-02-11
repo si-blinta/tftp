@@ -1,4 +1,5 @@
 #include "utils.h"
+
 uint16_t get_opcode(char* packet){
     uint16_t opcode;
     memcpy(&opcode, packet, sizeof(opcode));
@@ -64,18 +65,6 @@ void print_data_packet(char* packet){
     printf("%s\n",data);
     free(data);
 }
-size_t convert_to_netascii(char* buffer) {
-    size_t i, j;
-    size_t input_length = strlen(buffer); 
-    for (i = 0, j = 0; i < input_length; ++i, ++j) {
-        if (buffer[i] == '\n') {
-            buffer[j++] = '\r'; 
-        }
-        buffer[j] = buffer[i];
-    }
-    buffer[j] = '\0'; 
-    return j; 
-}
 int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd) {
     size_t packet_size;
     char* ack_packet = build_ack_packet(block_number, &packet_size);
@@ -97,21 +86,6 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
     }
     free(ack_packet);
     return 0;
-}
-void convert_netascii_to_native(char *data, int *length) {
-    if(strcmp(PLATFORM_NAME, "windows") == 0) {
-        return; // No conversion needed for Windows, as it already uses CR LF.
-    }
-    int i, j;
-    // Convert CR LF to LF for Linux/Unix
-    for (i = 0, j = 0; i < *length; ++i, ++j) {
-        if (data[i] == '\r' && data[i + 1] == '\n') {
-            i++; // Skip CR in CR LF
-        }
-        data[j] = data[i];
-    }
-    *length = j; // Update the length after conversion
-    data[j] = '\0'; // Ensure the result is null-terminated
 }
 char* build_error_packet(uint16_t error_code, char* error_msg,size_t* packet_size) {
     //The zero byte
