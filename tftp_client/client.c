@@ -118,6 +118,13 @@ static int connect_to_tftp_server(const char* server_ip, int server_port, int cl
     clientAddr.sin_port = htons(client_port);
     clientAddr.sin_addr.s_addr = inet_addr(server_ip);
 
+    /*struct timeval timeout;      
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt]\n");
+    }*/
+
     // Bind the socket with the adress  : not necessary ! Useful for debugging when using WireShark
     if (bind(*sockfd, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
         perror("[bind]");
@@ -209,13 +216,14 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
 }
 static int receive_file(const char* filename, config status ,struct sockaddr_in addr,int sockfd) {
     size_t total_bytes_received = 0;
+    size_t bytes_received = 0 ;
     time_t start = time(NULL);
-    if(request(RRQ, filename, status, sockfd, (struct sockaddr*)&addr) == -1){
-        return -1;
-    }
     char packet[MAX_BLOCK_SIZE];
     size_t packet_size;
     FILE* requested_file ;
+    socklen_t len = sizeof(addr);
+    int block_number = 0;
+    int first_request = 1;
     // TODO : gerer le cas netascii
     if(!strcasecmp(status.transfer_mode,"octet")){
         requested_file= fopen(filename, "wb");
@@ -225,20 +233,21 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
         fclose(requested_file);
         return -1;
     }
-    socklen_t len = sizeof(addr);
+    
+    // Send RRQ 
+
+    if(request(RRQ, filename, status, sockfd, (struct sockaddr*)&addr) == -1){
+        return -1;
+    }
     while (1) {
-        size_t bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)&addr, &len);
-        if (bytes_received == -1) {
-            perror("[recvfrom]");
+        bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)&addr, &len);
+        if(bytes_received == -1 ) {
+            perror("[recvfrom][receive_file]");
             fclose(requested_file);
             return -1;
+          
         }
-        
-        //Check if data is empty 
-        if(bytes_received == 4){
-            break;
-        }
-        
+        block_number ++;
         total_bytes_received+= bytes_received-4; // minus opcode and block_number
         if(status.trace){
             trace_received(packet,bytes_received);
@@ -246,18 +255,21 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
         if(get_opcode(packet) == ERROR){
             printf("[get] : error code = %d : error message : %s\n",get_error_code(packet),get_error_message(packet));
             if(remove(filename)){
+                fclose(requested_file);
                 perror("[remove]");
             }
             return -1;
         }
         fwrite(get_data(packet), 1, bytes_received - 4, requested_file); 
-        if(send_ack_packet(status,(struct sockaddr*)&addr,get_block_number(packet),sockfd) == -1){
+
+        if(send_ack_packet(status,(struct sockaddr*)&addr,block_number,sockfd) == -1){
             return -1;
         }
         // Check if this is the last data block
         if (bytes_received < MAX_BLOCK_SIZE) {
             break;
         }
+        
     }
     fclose(requested_file);
     time_t end = time(NULL);

@@ -9,19 +9,26 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr) {
     (*addr).sin_family = AF_INET;
     (*addr).sin_port = htons(port);
     (*addr).sin_addr.s_addr = INADDR_ANY;
-
+    
+    /*struct timeval timeout;      
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    if (setsockopt (*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt]\n");
+    }*/
     if (bind(*sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
         perror("[bind]");
         return -1;
     }
     return 0;
 }
-static void handle_client_requests(config status,int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr){
+static int handle_client_requests(config status,int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr){
     //NOT SECURE : imagine if i send a RRQ/WRQ with filename / mode size very big :) 
     char packet[MAX_BLOCK_SIZE];
     socklen_t len = sizeof(*client_addr);
     if(recvfrom(sockfd,(char* )packet,516,0,(struct sockaddr *) client_addr,&len) < 0){
-        perror("[recvfrom]");
+        perror("[recvfrom][handle_client_requests]");
+        return -1;
     }
     
     uint16_t opcode = get_opcode(packet);
@@ -56,7 +63,6 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     if(!strcasecmp(mode,"octet")){
         requested_file = fopen(path, "rb");
     }
-   
     if (requested_file == NULL) {
         send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_addr,sockfd);
         return -1;
@@ -66,23 +72,18 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     size_t bytes_read = 0;
     int block_number = 1;
     socklen_t len = sizeof(*client_addr);
-    
-    // We send the data even if it is empty , like official tftp client does
-    
-    bytes_read = fread(data, 1, 512, requested_file);
-    send_data_packet(status,block_number++,data,client_addr,bytes_read,sockfd);
-    
-    // Not empty
+
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
-        send_data_packet(status,block_number++,data,client_addr,bytes_read,sockfd);
+        send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
         // Receive the ACK packet for the current block_number
         size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
-        if ( bytes_received== -1) {
+        if( bytes_received == -1 ) {
             perror("[recvfrom]");
             fclose(requested_file); 
             return -1;
-            
         }
+        //Increment block number when an ack is received
+        block_number++ ;
         if(status.trace){
             trace_received(ack_packet,bytes_received);
         }
@@ -94,10 +95,13 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
 
     fclose(requested_file); 
     return 0;
+    printf("RRQ SUCCESS\n");
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
     char path[100] = SERVER_DIRECTORY;
     strcat(path,filename);
+    char data_packet[516];
+    size_t bytes_received; 
     FILE* received_file = fopen(path,"r");
     if( received_file == NULL){
         //the file doesnt exist:
@@ -119,8 +123,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     if(send_ack_packet(status,(struct sockaddr*)client_addr,0,sockfd) == -1){
         return -1;
     }
-    char data_packet[516];
-    size_t bytes_received; 
+   
     while (1) { 
         bytes_received = recvfrom(sockfd, data_packet, sizeof(data_packet), 0, (struct sockaddr*)client_addr, &len);
         if(bytes_received == -1){
