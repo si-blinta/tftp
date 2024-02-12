@@ -130,11 +130,23 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd) {
+        /**
+     * Make revfrom time out if it doesn't get any message after a certain time, this can occur if :
+     *      -The client stop sending data because he time outed also
+     *      -Network problem , lost connection
+    */
+    struct timeval timeout;
+    timeout.tv_sec = status.timemout;
+    timeout.tv_usec = 0;
+    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt]\n");
+    }
     char path[100] = SERVER_DIRECTORY;
     strcat(path,filename);
     char data_packet[516];
     size_t bytes_received; 
     FILE* received_file = fopen(path,"r");
+    int last_block_number_received = 0;
     if( received_file == NULL){
         //the file doesnt exist:
         send_error_packet(status,ACCESS_VIOLATION,"Acess violation",client_addr,sockfd);
@@ -158,17 +170,30 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
    
     while (1) { 
         bytes_received = recvfrom(sockfd, data_packet, sizeof(data_packet), 0, (struct sockaddr*)client_addr, &len);
-        if(bytes_received == -1){
-            perror("[recvfrom]");
-            fclose(received_file); 
-            return -1;
+        while(bytes_received == -1){
+            if(errno != EAGAIN && errno != EWOULDBLOCK){
+                perror("[recvfrom]");
+                fclose(received_file); 
+                return -1;
+            }
+            //Time out occured
+            printf("RRQ FAILED : time out reached \n");
+            fclose(received_file);
+            return -1;            
+            
         }
         if(status.trace){
             trace_received(data_packet,bytes_received);
         }
-        fwrite(data_packet + 4, 1, bytes_received - 4, received_file);
-        if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
-            return -1;
+        printf("attempt sending ack %d\n",get_block_number(data_packet));
+        if(packet_loss(PACKET_LOSS_RATE)){
+            if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
+                return -1;
+            }
+        }
+        if(last_block_number_received != get_block_number(data_packet)){
+            fwrite(get_data(data_packet), 1, bytes_received - 4, received_file);
+            last_block_number_received = get_block_number(data_packet);
         }
         if(bytes_received < 516){
             break;
