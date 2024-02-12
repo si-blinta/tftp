@@ -215,6 +215,18 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
     return 0;
 }
 static int receive_file(const char* filename, config status ,struct sockaddr_in addr,int sockfd) {
+    /**
+     * Make revfrom time out if it doesn't get any message after a certain time, this can occur if :
+     *      -The server stop sending data because he time outed also
+     *      -Network problem , lost connection
+    */
+    
+    struct timeval timeout;
+    timeout.tv_sec = status.timemout;
+    timeout.tv_usec = 0;
+    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt]\n");
+    }
     size_t total_bytes_received = 0;
     size_t bytes_received = 0 ;
     time_t start = time(NULL);
@@ -240,11 +252,16 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
     }
     while (1) {
         bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)&addr, &len);
-        if(bytes_received == -1 ) {
-            perror("[recvfrom][receive_file]");
+        if(bytes_received == -1) {
+            if(errno != EWOULDBLOCK && errno != EAGAIN){
+                perror("[recvfrom][receive_file]");
+                fclose(requested_file);
+                return -1;
+            }
+            //Time out occured
+            printf("[get]: FAILED : time out reached \n");
             fclose(requested_file);
-            return -1;
-          
+            return -1;                
         }
      
         total_bytes_received+= bytes_received-4; // minus opcode and block_number
@@ -275,7 +292,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
         if (bytes_received < MAX_BLOCK_SIZE) {
             break;
         }
-        
+
     }
     fclose(requested_file);
     time_t end = time(NULL);

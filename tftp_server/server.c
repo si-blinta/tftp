@@ -53,19 +53,13 @@ static int handle_client_requests(config status,int sockfd,struct sockaddr_in* a
 }
 static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd){
     // We need to make to set the recvfrom time out :
-    struct timeval timeout;      
-    timeout.tv_sec = status.rexmt ;
-    timeout.tv_usec = 0;
-    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+    struct timeval per_packet_timeout;      
+    per_packet_timeout.tv_sec = status.rexmt ;
+    per_packet_timeout.tv_usec = 0;
+    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
         perror("[setsockopt][process_rrq]\n");
-    }    
-    
-    /** TODO: implementing total time out , i think we need to use signals
-     * total time out is used for these cases :
-     *  - When the last data packet is sent to the user but the user ack packet got lost.
-     *  - To limit the total time out , maybe there is a network problem , so its better to cancel the request.
-     * */ 
-
+    } 
+    int timeout = 0;
     char ack_packet[516]; 
     size_t packet_size;
     FILE* requested_file;
@@ -90,33 +84,38 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
         if(packet_loss(PACKET_LOSS_RATE)){
             send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
         }
-       
         size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
-        while (bytes_received == -1) {
-            
+        while (bytes_received == -1) { //Ack packet is not received or a problem
             //Error recvfrom
-
             if(errno != EAGAIN && errno != EWOULDBLOCK){
                 perror("[recvfrom]");
                 fclose(requested_file); 
                 return -1;
             }
-
-            // Time out recvfrom : didnt receive ACK packet
-
+            // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("attempt sending data %d\n",block_number);
             if(packet_loss(PACKET_LOSS_RATE)){
                 send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
             }
-          
-
             // Wait for ack again
             bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
 
+            //Increment the time out for the actual ack packet
+            timeout+=status.rexmt;
+            //Check if we exceeded the time out for the same packet
+            if(timeout >= status.timemout){
+                printf("RRQ FAILED : time out reached : %d seconds\n",timeout);
+                fclose(requested_file);
+                return 1;
+            }
+
         }
-        //Increment block number when an ack is received
-        block_number++ ;
+
+        // An ACK packet is received :
+
+        timeout = status.timemout; //Reset time out , because a new data block is about to be sent
+        block_number++ ;           //Increment block number
         if(status.trace){
             trace_received(ack_packet,bytes_received);
         }
@@ -125,7 +124,6 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             break;
         }
     }
-
     fclose(requested_file); 
     printf("RRQ SUCCESS\n");
     return 0;

@@ -15,7 +15,7 @@
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
 
-#define PACKET_LOSS_RATE 50
+#define PACKET_LOSS_RATE 100
 
 typedef struct {
     char* server ;          // server ip
@@ -309,9 +309,6 @@ void trace_received(char* packet,size_t packet_size);
  * @return Nothing
  */
 int packet_loss(int loss_percentage);
-
-
-
 
 
 

@@ -78,11 +78,15 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
         return -1; 
     }
 
-    size_t bytes_sent = sendto(sockfd, ack_packet, packet_size, 0, client_addr, sizeof(*client_addr));
-
-
-    if (bytes_sent < 0) {
-        perror("Failed to send ACK packet");
+    if(sendto(sockfd, ack_packet, packet_size, 0, client_addr, sizeof(*client_addr))<0){
+        if(errno != EWOULDBLOCK && errno != EAGAIN){
+            perror("[sendto]");
+            free(ack_packet); 
+            return -1;
+        }
+        //Time out reached
+        printf("[send_ack_packet] : time out\n");
+        free(ack_packet);
         return -1;
     }
     if(status.trace){
@@ -172,7 +176,13 @@ int send_error_packet(config status,int error_code,char* error_msg, const struct
         return -1;
     }
     if (sendto(sockfd, error_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
-        perror("[sendto]");
+        if(errno != EWOULDBLOCK && errno != EAGAIN){
+            perror("[sendto]");
+            free(error_packet); 
+            return -1;
+        }
+        //Time out reached
+        printf("[send_error_packet] : time out\n");
         free(error_packet); 
         return -1;
     }
@@ -190,7 +200,13 @@ int send_data_packet(config status,int block_number,char* data, const struct soc
         return -1;
     }
     if (sendto(sockfd, data_packet, packet_size, 0, (struct sockaddr*)client_addr, sizeof(*client_addr)) == -1) {
-        perror("[sendto]");
+        if(errno != EWOULDBLOCK && errno != EAGAIN){
+            perror("[sendto]");
+            free(data_packet); 
+            return -1;
+        }
+        //Time out reached
+        printf("[send_data_packet] : time out\n");
         free(data_packet); 
         return -1;
     }
