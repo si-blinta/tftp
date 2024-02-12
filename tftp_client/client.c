@@ -189,7 +189,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
         block_number++;
         printf("attempt sending data %d\n",block_number);
-        if(packet_loss(PACKET_LOSS_RATE)){
+        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
                
             if(send_data_packet(status,block_number,data,&addr,bytes_read,sockfd) == -1){
                     return -1;
@@ -207,7 +207,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("attempt sending data %d\n",block_number);
-            if(packet_loss(PACKET_LOSS_RATE)){
+            if(packet_loss(PACKET_LOSS_PERCENTAGE)){
                 send_data_packet(status,block_number,data,&addr,bytes_read,sockfd);
             }
             // Wait for ack again
@@ -224,6 +224,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
             
            
         }
+        timeout = 0; //Reset time out , because a new data block is about to be sent
         if(status.trace){
             trace_received(ack_packet,bytes_received);
         }
@@ -303,7 +304,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             return -1;
         }
         printf("attempt sending ack %d\n",get_block_number(packet));
-        if(packet_loss(PACKET_LOSS_RATE)){
+        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
             if(send_ack_packet(status,(struct sockaddr*)&addr,get_block_number(packet),sockfd) == -1){
                 return -1;
             }

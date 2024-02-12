@@ -81,7 +81,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
 
     while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
         printf("attempt sending data %d\n",block_number);
-        if(packet_loss(PACKET_LOSS_RATE)){
+        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
             send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
         }
         size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)client_addr, &len);
@@ -95,7 +95,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("attempt sending data %d\n",block_number);
-            if(packet_loss(PACKET_LOSS_RATE)){
+            if(packet_loss(PACKET_LOSS_PERCENTAGE)){
                 send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
             }
             // Wait for ack again
@@ -114,7 +114,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
 
         // An ACK packet is received :
 
-        timeout = status.timemout; //Reset time out , because a new data block is about to be sent
+        timeout = 0; //Reset time out , because a new data block is about to be sent
         block_number++ ;           //Increment block number
         if(status.trace){
             trace_received(ack_packet,bytes_received);
@@ -170,14 +170,14 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
    
     while (1) { 
         bytes_received = recvfrom(sockfd, data_packet, sizeof(data_packet), 0, (struct sockaddr*)client_addr, &len);
-        while(bytes_received == -1){
+        if(bytes_received == -1){
             if(errno != EAGAIN && errno != EWOULDBLOCK){
                 perror("[recvfrom]");
                 fclose(received_file); 
                 return -1;
             }
             //Time out occured
-            printf("RRQ FAILED : time out reached \n");
+            printf("WRQ FAILED : time out reached \n");
             fclose(received_file);
             return -1;            
             
@@ -186,7 +186,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
             trace_received(data_packet,bytes_received);
         }
         printf("attempt sending ack %d\n",get_block_number(data_packet));
-        if(packet_loss(PACKET_LOSS_RATE)){
+        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
             if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
                 return -1;
             }
@@ -200,6 +200,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         }
     }
     fclose(received_file);
+    printf("WRQ SUCCESS\n");
     return 0;
 }
 

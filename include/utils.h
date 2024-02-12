@@ -15,7 +15,7 @@
 #define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
 
-#define PACKET_LOSS_RATE 100
+#define PACKET_LOSS_PERCENTAGE 50
 
 typedef struct {
     char* server ;          // server ip
@@ -306,7 +306,7 @@ void trace_received(char* packet,size_t packet_size);
 /**
  * @brief Simulates packet loss chance.
  * @param loss_percentage The percentage of packet loss occuring.
- * @return Nothing
+ * @return 1 if no packet loss and 0 if we have a packet loss
  */
 int packet_loss(int loss_percentage);
 
