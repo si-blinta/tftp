@@ -249,7 +249,7 @@ int main(int argc, char**argv)
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[2])};
+    config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[2])};
     struct sockaddr_in client_addr;
     int sockfd;
     int error = 0;

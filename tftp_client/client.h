@@ -48,7 +48,7 @@ static void set_file_transfer_mode(const char* mode,char* transfer_mode);
  * 
  * @param filename The name of the file to send.
  */
-static int send_file(const char* filename,config status,struct sockaddr_in* addr, int sockfd);
+static int send_file(const char* filename,config status,struct sockaddr_in* server_addr, int sockfd);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -58,7 +58,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* addr
  * 
  * @param filename The name of the file to receive.
  */
-static int receive_file(const char* filename, config status,struct sockaddr_in* addr,int sockfd) ;
+static int receive_file(const char* filename, config status,struct sockaddr_in* server_addr,int sockfd) ;
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -121,7 +121,7 @@ void set_total_retransmission_timeout(int timeout);
  * @param addr The server socket address.
  * @param sockfd The file descriptor of the socket.
  */
-static int process_command(char* command,config* status,struct sockaddr_in* addr,int sockfd);
+static int process_command(char* command,config* status,struct sockaddr_in server_addr,int sockfd);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -130,7 +130,7 @@ static int process_command(char* command,config* status,struct sockaddr_in* addr
  * @param addr The server socket adress.
  * @param sockfd The file discriptor of the socket.
  */
-static void handle_put_command(config status,struct sockaddr_in* addr,int sockfd) ;
+static void handle_put_command(config status,struct sockaddr_in* server_addr,int sockfd) ;
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -139,7 +139,7 @@ static void handle_put_command(config status,struct sockaddr_in* addr,int sockfd
  * @param addr The server socket adress.
  * @param sockfd The file discriptor of the socket.
  */
-static void handle_get_command(config status ,struct sockaddr_in* addr,int sockfd);
+static void handle_get_command(config status ,struct sockaddr_in* server_addr,int sockfd);
 
 //----------------------------------------------------------------------------------------------
 /**

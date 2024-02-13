@@ -15,7 +15,7 @@
 #define MAX_BLOCK_SIZE 516
 
 typedef struct {
-    char* server ;                // server ip
+    char* server_ip ;                // server ip
     char* transfer_mode;          // transfer mode , we only implemented octet
     uint8_t trace;                // tracing packets : for debugging 
     uint8_t per_packet_time_out ; // per-packet retransmission timeout
