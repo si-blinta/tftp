@@ -56,8 +56,8 @@ static void print_status(config status){
     else{
         printf("Tracing: Off\n");
     }
-    printf("Rexmt-interval: %d seconds\n",status.rexmt);
-    printf("Max-timeout: %d seconds\n",status.timemout);
+    printf("Per Packet timeout: %d seconds\n",status.per_packet_time_out);
+    printf("Timeout: %d seconds\n",status.timemout);
 }
 static int process_command(char* command,config* status,struct sockaddr_in addr,int sockfd) {
     if (strcmp(command, "put") == 0) {
@@ -106,27 +106,15 @@ static void print_help() {
         "  ?       \tPrint this help information\n"
     );
 }
-static int connect_to_tftp_server(int per_packet_timout,const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd) {
-    struct sockaddr_in clientAddr;
+static int connect_to_tftp_server(int per_packet_timout,const char* server_ip, int server_port,struct sockaddr_in* server_addr,int* sockfd) {
 
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("[socket]");
         return -1;
     }
-    memset(&clientAddr, 0, sizeof(clientAddr));
-    clientAddr.sin_family = AF_INET;
-    clientAddr.sin_port = htons(client_port);
-    clientAddr.sin_addr.s_addr = inet_addr(server_ip);
-
-    // Bind the socket with the adress  : not necessary ! Useful for debugging when using WireShark
-    if (bind(*sockfd, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
-        perror("[bind]");
-        close(*sockfd);  
-        return -1;
-    }
-    addr->sin_family = AF_INET;
-    addr->sin_port = htons(server_port);
-    addr->sin_addr.s_addr = inet_addr(server_ip); 
+    server_addr->sin_family = AF_INET;
+    server_addr->sin_port = htons(server_port);
+    server_addr->sin_addr.s_addr = inet_addr(server_ip); 
     return 0;
 }
 static void set_file_transfer_mode(const char* mode,char* transfer_mode){
@@ -143,16 +131,19 @@ static void set_trace(config* status){
 
 }
 static int send_file(const char* filename,config status,struct sockaddr_in addr, int sockfd) {
-    // We need to make to set the recvfrom time out :
+     /**
+    *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
+    *   before resending the data packet, assuming that it got lost.
+    */
     struct timeval per_packet_timeout;      
-    per_packet_timeout.tv_sec = status.rexmt ;
+    per_packet_timeout.tv_sec = status.per_packet_time_out ;
     per_packet_timeout.tv_usec = 0;
     if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
         perror("[setsockopt][process_rrq]\n");
     } 
-    size_t total_bytes_sent = 0;
-    time_t start = time(NULL);
-    FILE* requested_file ;
+    size_t total_bytes_sent = 0;    //keep track of total bytes sent
+    time_t start = time(NULL);      
+    FILE* requested_file = NULL ;
     //TODO : gerer le netascii
     if(!strcasecmp(status.transfer_mode,"octet")){
          requested_file= fopen(filename, "rb");
@@ -161,14 +152,15 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
         perror("Failed to open file");
         return -1 ; 
     }
+    //Send a WRQ request
     if(request(WRQ, filename, status, sockfd, (struct sockaddr*)&addr) == -1){
         return -1;
     }
-    char ack_packet[MAX_BLOCK_SIZE];
-    char data[MAX_BLOCK_SIZE];
-    size_t packet_size, bytes_read;
-    socklen_t len = sizeof(addr);
-    int block_number = 0;
+    char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
+    char data[MAX_BLOCK_SIZE-4];        // buffer to read data from a file
+    size_t bytes_read;                  // bytes_read using fread
+    socklen_t len = sizeof(addr);       // size of the server adress
+    int block_number = 1;               // the current block 
     int timeout = 0;
     // Wait for the initial ACK for the WRQ
     size_t bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&addr, &len);
@@ -186,10 +178,10 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
             fclose(requested_file);
             return 0 ;
         }
-    while ((bytes_read = fread(data, 1, 512, requested_file)) > 0) {
-        block_number++;
-        printf("attempt sending data %d\n",block_number);
-        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
+    while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
+        
+        printf("[packet loss] sending data#%d\n",block_number);
+        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
                
             if(send_data_packet(status,block_number,data,&addr,bytes_read,sockfd) == -1){
                     return -1;
@@ -206,24 +198,23 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
             }
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
-            printf("attempt sending data %d\n",block_number);
-            if(packet_loss(PACKET_LOSS_PERCENTAGE)){
+            printf("[packet loss] sending data#%d\n",block_number);
+            if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
                 send_data_packet(status,block_number,data,&addr,bytes_read,sockfd);
             }
             // Wait for ack again
             bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0,(struct sockaddr*)&addr, &len);
 
             //Increment the time out for the actual ack packet
-            timeout+=status.rexmt;
+            timeout+=status.per_packet_time_out;
             //Check if we exceeded the time out for the same packet
             if(timeout >= status.timemout){
                 printf("[put] : time out reached : %d seconds\n",timeout);
                 fclose(requested_file);
                 return 1;
             }
-            
-           
         }
+        block_number++;//Increment block#
         timeout = 0; //Reset time out , because a new data block is about to be sent
         if(status.trace){
             trace_received(ack_packet,bytes_received);
@@ -234,6 +225,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in addr,
             fclose(requested_file);
             return 0; 
         }
+        
     }
 
     fclose(requested_file);
@@ -304,7 +296,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
             return -1;
         }
         printf("attempt sending ack %d\n",get_block_number(packet));
-        if(packet_loss(PACKET_LOSS_PERCENTAGE)){
+        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
             if(send_ack_packet(status,(struct sockaddr*)&addr,get_block_number(packet),sockfd) == -1){
                 return -1;
             }
@@ -332,23 +324,22 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in 
 
 int main(int argc, char const* argv[]) {
     srand(time(NULL));
-    if(argc < 4){
-        printf("USAGE ./client [client port] [ip] [port]\n");
+    if(argc < 3){
+        printf("USAGE ./client [server ip] [server port]\n");
         return 0;
     }
-    config status = {.server = (char*)argv[2],.transfer_mode = "octet",.trace = 0,.rexmt = 1,.timemout = 10};
-    int server_port = atoi(argv[3]);
-    int client_port = atoi(argv[1]);
+    config status = {.server = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10};
+    int server_port = atoi(argv[2]);
     int sockfd;
-    struct sockaddr_in addr;
-    if (connect_to_tftp_server(status.rexmt,status.server,server_port,client_port,&addr,&sockfd) == -1) {
+    struct sockaddr_in server_addr;
+    if (connect_to_tftp_server(status.per_packet_time_out,status.server,server_port,&server_addr,&sockfd) == -1) {
         printf("[connect_to_tftp_server] : erreur");
     }
     char command[100];
     while(1){
         printf("<tftp>");
         scanf("%s",command);
-        process_command(command,&status,addr,sockfd);
+        process_command(command,&status,server_addr,sockfd);
 
     }  	
 }

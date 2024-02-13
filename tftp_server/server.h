@@ -12,7 +12,7 @@
  * @param port Port number on which the server will listen for incoming connections.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr);
+static int init_tftp_server(int port,int* sockfd);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -22,7 +22,7 @@ static int init_tftp_server(int port,int* sockfd,struct sockaddr_in* addr);
  * 
  * @param sockfd The socket file descriptor used to listen for incoming requests.
  */
-static int handle_client_requests(config status,int sockfd,struct sockaddr_in* addr,struct sockaddr_in* client_addr);
+static int handle_client_requests(config status,int sockfd,struct sockaddr_in* client_addr);
 
 //-------------------------------------------------------------------------------------
 /**

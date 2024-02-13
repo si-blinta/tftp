@@ -12,17 +12,16 @@
 #include <errno.h>
 #include <time.h>
 #include <strings.h>
-#define IP "127.0.0.1"
 #define MAX_BLOCK_SIZE 516
 
-#define PACKET_LOSS_PERCENTAGE 50
+#define PACKET_LOSS_PERCENTAGE 10
 
 typedef struct {
-    char* server ;          // server ip
-    char* transfer_mode;    // transfer mode , we only implemented octet
-    uint8_t trace;          // tracing packets : for debugging 
-    uint8_t rexmt ;         // per-packet retransmission timeout
-    uint8_t timemout;       // total retransmission timeout
+    char* server ;                // server ip
+    char* transfer_mode;          // transfer mode , we only implemented octet
+    uint8_t trace;                // tracing packets : for debugging 
+    uint8_t per_packet_time_out ; // per-packet retransmission timeout
+    uint8_t timemout;             // total retransmission timeout for a single packet.
 }config;
 
 
@@ -311,7 +310,7 @@ void trace_received(char* packet,size_t packet_size);
 int packet_loss(int loss_percentage);
 
 
-
+int set_socket_timer();
 
 
 

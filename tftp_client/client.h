@@ -29,7 +29,7 @@ int request(uint16_t opcode,const char* filename, config status, int sockfd, str
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
 //
-static int connect_to_tftp_server(int per_packet_timeout,const char* server_ip, int server_port, int client_port,struct sockaddr_in* addr,int* sockfd);
+static int connect_to_tftp_server(int per_packet_timeout,const char* server_ip, int client_port,struct sockaddr_in* server_addr,int* sockfd);
 //----------------------------------------------------------------------------------------------
 /**
  * @brief Sets the file transfer mode.
