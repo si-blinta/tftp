@@ -84,7 +84,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
 
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
         printf("[packet loss] sending data#%d\n",block_number);
-        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
+        if(!packet_loss(status.packet_loss_percentage)){
             if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
                 fclose(requested_file);
                 return -1;
@@ -101,7 +101,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("[packet loss] sending data#%d\n",block_number);
-            if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
+            if(!packet_loss(status.packet_loss_percentage)){
                 if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
                     fclose(requested_file);
                     return -1;
@@ -221,7 +221,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         }
         printf("[packet loss] sending ack#%d\n",get_block_number(data_packet));
         //if there is no packet loss we send the ack.
-        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
+        if(!packet_loss(status.packet_loss_percentage)){
             if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
                 return -1;
             }
@@ -244,12 +244,12 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
 int main(int argc, char**argv)
 {   
     srand(time(NULL));
-    if(argc < 2){
-        printf("USAGE ./server [port]\n");
+    if(argc < 3){
+        printf("USAGE ./server [port] [packet loss percentage (between 0 and 100)]\n");
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10};
+    config status = {.server = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[2])};
     struct sockaddr_in client_addr;
     int sockfd;
     int error = 0;

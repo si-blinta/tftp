@@ -183,7 +183,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* addr
         }  
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
         printf("[packet loss] sending data#%d\n",block_number);
-        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){      
+        if(!packet_loss(status.packet_loss_percentage)){      
             if(send_data_packet(status,block_number,data,addr,bytes_read,sockfd) == -1){
                     fclose(requested_file);
                     return -1;
@@ -201,7 +201,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* addr
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("[packet loss] sending data#%d\n",block_number);
-            if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
+            if(!packet_loss(status.packet_loss_percentage)){
                 if(send_data_packet(status,block_number,data,addr,bytes_read,sockfd) == -1){
                     fclose(requested_file);
                     return -1;
@@ -308,7 +308,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             return -1;
         }
         printf("attempt sending ack %d\n",get_block_number(packet));
-        if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
+        if(!packet_loss(status.packet_loss_percentage)){
             if(send_ack_packet(status,(struct sockaddr*)addr,get_block_number(packet),sockfd) == -1){
                 return -1;
             }
@@ -337,11 +337,11 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
 
 int main(int argc, char const* argv[]) {
     srand(time(NULL));
-    if(argc < 3){
-        printf("USAGE ./client [server ip] [server port]\n");
+    if(argc < 4){
+        printf("USAGE ./client [server ip] [server port] [packet loss percentage (between 0 and 100)]\n");
         return 0;
     }
-    config status = {.server = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10};
+    config status = {.server = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[3])};
     int server_port = atoi(argv[2]);
     int sockfd;
     struct sockaddr_in server_addr;
