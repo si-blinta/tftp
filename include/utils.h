@@ -14,7 +14,7 @@
 #include <strings.h>
 #define MAX_BLOCK_SIZE 516
 
-#define PACKET_LOSS_PERCENTAGE 10
+#define PACKET_LOSS_PERCENTAGE 0
 
 typedef struct {
     char* server ;                // server ip

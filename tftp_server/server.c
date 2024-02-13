@@ -64,7 +64,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
         perror("[setsockopt][process_rrq]\n");
     } 
-    int timeout = 0;        //the time out in which we wait for the same ack before quiting the program.
+    int timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];   // ack packet
     FILE* requested_file = NULL;
     char path[100] = SERVER_DIRECTORY;
@@ -85,7 +85,10 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
         printf("[packet loss] sending data#%d\n",block_number);
         if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
-            send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+            if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
+                fclose(requested_file);
+                return -1;
+            }
         }
         bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
         while (bytes_received == -1) { 
@@ -99,7 +102,10 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             // Resend data
             printf("[packet loss] sending data#%d\n",block_number);
             if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
-                send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd);
+                if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
+                    fclose(requested_file);
+                    return -1;
+                }
             }
             // Wait for ack again
             bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
@@ -128,7 +134,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             }
             // if its other type
             else {
-                if(send_error_packet(status,NOT_DEFINED,"Expected Ack packet",&client_addr,sockfd)){
+                if(send_error_packet(status,NOT_DEFINED,"Expected Ack packet",client_addr,sockfd)){
                     fclose(requested_file);
                     return -1;
                 }
@@ -195,6 +201,24 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         if(status.trace){
             trace_received(data_packet,bytes_received);
         }
+         // If the packet is not data
+        if(get_opcode(data_packet) != DATA){
+            // if it is an error packet we print error and we quit
+            if (get_opcode(data_packet) == ERROR) {    
+                print_error_message(data_packet);
+                break;
+            }
+            // if its other type
+            else {
+                if(send_error_packet(status,NOT_DEFINED,"Expected data packet",client_addr,sockfd)){
+                    fclose(received_file);
+                    return -1;
+                }
+                printf("RRQ FAILED : Unexpected packet\n");
+                fclose(received_file);
+                return -1;
+            }
+        }
         printf("[packet loss] sending ack#%d\n",get_block_number(data_packet));
         //if there is no packet loss we send the ack.
         if(!packet_loss(PACKET_LOSS_PERCENTAGE)){
@@ -205,7 +229,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         //write the data if the data packet received is different from the last one
         if(last_block_number_received != get_block_number(data_packet)){
             fwrite(get_data(data_packet), 1, bytes_received - 4, received_file);
-            last_block_number_received = get_block_number(data_packet);
+            last_block_number_received = get_block_number(data_packet);// update last block #
         }
         //break if its the last data packet
         if(bytes_received < MAX_BLOCK_SIZE){
