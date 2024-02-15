@@ -18,11 +18,12 @@ static int init_tftp_server(int port,int* sockfd) {
     }
     return 0;
 }
-static int handle_client_requests(config status,int sockfd,struct sockaddr_in* client_addr){
-    //NOT SECURE : imagine if i send a RRQ/WRQ with filename / mode size very big :) 
+static int handle_client_requests(config status,int sockfd){
+    
     char packet[MAX_BLOCK_SIZE];
-    socklen_t len = sizeof(*client_addr);
-    if(recvfrom(sockfd,(char* )packet,MAX_BLOCK_SIZE,0,(struct sockaddr *) client_addr,&len) < 0){
+    struct sockaddr_in client_addr;
+    socklen_t len = sizeof(client_addr);
+    if(recvfrom(sockfd,(char* )packet,MAX_BLOCK_SIZE,0,(struct sockaddr *) &client_addr,&len) < 0){
         if(errno != EAGAIN && errno != EWOULDBLOCK){
             perror("[recvfrom][handle_client_requests]");
             return -1;
@@ -38,14 +39,14 @@ static int handle_client_requests(config status,int sockfd,struct sockaddr_in* c
     case RRQ:
         filename = get_file_name(packet);
         mode = get_mode(packet);
-        process_rrq(status,filename,mode,client_addr,sockfd);
+        process_rrq(status,filename,mode,&client_addr,sockfd);
         free(filename);
         free(mode);
         break;
     case WRQ :
         filename = get_file_name(packet);
         mode = get_mode(packet);
-        process_wrq(status,filename,mode,client_addr,sockfd);
+        process_wrq(status,filename,mode,&client_addr,sockfd);
         free(filename);
         free(mode);
     default:
@@ -66,6 +67,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     } 
     int timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];   // ack packet
+    memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;
     char path[100] = SERVER_DIRECTORY;
     strcat(path,filename);
@@ -78,6 +80,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
         return -1;
     }
     char data[MAX_BLOCK_SIZE-4];             // The buffer to store file bytes with fread.
+    memset(data, 0, sizeof(data));
     size_t bytes_read = 0;      //bytes read from fread
     size_t bytes_received = 0;  //bytes received from recvfrom
     int block_number = 1;       //current data block#
@@ -175,6 +178,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     }
     int last_block_number_received = 0; // to keep track of the last block# in case of packet loss.
     char data_packet[MAX_BLOCK_SIZE];              // where to store the data packet.
+    memset(data_packet,0,sizeof(data_packet));
     size_t bytes_received;              // size of bytes received from the client. 
     
     // Send the ACK0 to the client
@@ -250,7 +254,6 @@ int main(int argc, char**argv)
     }
     int server_port = atoi(argv[1]);
     config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[2])};
-    struct sockaddr_in client_addr;
     int sockfd;
     int error = 0;
     if(init_tftp_server(server_port,&sockfd) == -1){
@@ -258,7 +261,7 @@ int main(int argc, char**argv)
     }
     while (!error)
     {
-        error = handle_client_requests(status,sockfd,&client_addr);
+        error = handle_client_requests(status,sockfd);
     }
     
 }

@@ -260,6 +260,7 @@ void trace_sent(char* packet,size_t packet_size){
 void trace_received(char* packet,size_t packet_size){
     char* filename = NULL;
     char* transfer_mode = NULL;
+    char* error_msg = NULL;
     switch(get_opcode(packet)){
         case RRQ:
             filename = get_file_name(packet);
@@ -282,7 +283,7 @@ void trace_received(char* packet,size_t packet_size){
             printf("received DATA <block=%d, %ld bytes>\n",get_block_number(packet),packet_size);
             break;
         case ERROR:
-            char* error_msg = get_error_message(packet);
+            error_msg = get_error_message(packet);
             printf("received ERROR <code=%d, msg=%s>\n",get_error_code(packet),get_error_message(packet));
             free(error_msg);
             break;

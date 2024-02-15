@@ -66,6 +66,7 @@ static int process_command(char* command,config* status,struct sockaddr_in serve
      * can't modify the value of server_address but instead sends a copy to put and get so they can modify it 
      * without a problem.
      * every time we execute a new command , the port is the same ! 
+     * but in every put/get command the port is changing because of the tftp server using differents ports to handle requests.
      * 
     */
     
@@ -152,6 +153,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     } 
     int timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
+    memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;  
     size_t total_bytes_sent = 0;    //keep track of total bytes sent
     //TODO : gerer le netascii
@@ -169,6 +171,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     }
     
     char data[MAX_BLOCK_SIZE-4];        // buffer to read data from a file
+    memset(data, 0, sizeof(data));
     size_t bytes_read;                  // bytes_read using fread
     socklen_t len = sizeof(*server_addr);       // size of the server adress
     size_t bytes_received = 0;
@@ -284,6 +287,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     size_t total_bytes_received = 0;
     size_t bytes_received = 0 ;
     char packet[MAX_BLOCK_SIZE];
+    memset(packet, 0, sizeof(packet));
     socklen_t len = sizeof(*server_addr);   
     int last_block_number_received = 0; // starts with a number != 1
     time_t start = time(NULL);
@@ -292,7 +296,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
         return -1;
     }
     while (1) {
-        bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)server_addr, &len);
+        bytes_received = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr*)server_addr, &len);        
         if(bytes_received == -1) {
             //Actual error when using recvfrom
             if(errno != EWOULDBLOCK && errno != EAGAIN){

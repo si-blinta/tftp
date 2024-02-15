@@ -22,7 +22,7 @@ static int init_tftp_server(int port,int* sockfd);
  * 
  * @param sockfd The socket file descriptor used to listen for incoming requests.
  */
-static int handle_client_requests(config status,int sockfd,struct sockaddr_in* client_addr);
+static int handle_client_requests(config status,int sockfd);
 
 //-------------------------------------------------------------------------------------
 /**
