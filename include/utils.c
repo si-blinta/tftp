@@ -6,7 +6,7 @@ int packet_loss(int loss_percentage) {
 uint16_t get_opcode(char* packet){
     uint16_t opcode;
     memcpy(&opcode, packet, sizeof(opcode));
-    return ntohs(opcode); // Convertit de network byte order à host byte order
+    return ntohs(opcode); // Convert from network byte order to host byte order
 }
 char* get_file_name(char* packet){
     char* buffer=strdup(packet+2);
@@ -18,31 +18,16 @@ char* get_mode(char* packet){
     free(filename);
     return mode;
 }
-void print_request_packet(char* packet){
-    uint16_t opcode = get_opcode(packet);
-    char* filename = get_file_name(packet);
-    char* mode = get_mode(packet);
-    printf("NEW REQUEST\n");
-    printf("______________________________________________________________________\n");
-    printf("opcode   : %u\n",opcode);
-    printf("filename : %s\n",filename);
-    printf("mode     : %s\n",mode);
-    printf("______________________________________________________________________\n");
-    free(filename);
-}
-void print_error_packet(char* packet){
-    uint16_t opcode = get_opcode(packet);
-    uint16_t error_code = get_error_code(packet);
-    char* error_message = get_error_message(packet);
-    printf("%u\n",opcode);
-    printf("%u\n",error_code);
-    printf("%s\n",error_message);
-    free(error_message);
+//Not used for the moment because it needs to allocate and free every time which is bad
+char* get_data(char* packet){
+    char* data = strdup(packet+4);
+    return data;
+
 }
 uint16_t get_error_code(char* packet){
     uint16_t error_code;
     memcpy(&error_code, packet + 2, sizeof(error_code)); 
-    return ntohs(error_code); // Conversion nécessaire
+    return ntohs(error_code); 
 }
 char* get_error_message(char* packet){
     char* error_msg = strdup(packet+4);
@@ -52,21 +37,7 @@ char* get_error_message(char* packet){
 uint16_t get_block_number(char* packet){
     uint16_t block_number;
     memcpy(&block_number, packet + 2, sizeof(block_number));
-    return ntohs(block_number); // Conversion nécessaire
-}
-char* get_data(char* packet){
-    char* data = strdup(packet+4);
-    return data;
-
-}
-void print_data_packet(char* packet){
-    uint16_t opcode = get_opcode(packet);
-    uint16_t block_number = get_block_number(packet);
-    char* data = get_data(packet);
-    printf("%u\n",opcode);
-    printf("%u\n",block_number);
-    printf("%s\n",data);
-    free(data);
+    return ntohs(block_number);
 }
 int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd) {
     size_t packet_size;
@@ -180,10 +151,6 @@ int send_error_packet(config status,int error_code,char* error_msg, const struct
             free(error_packet); 
             return -1;
         }
-        //Time out reached
-        printf("[send_error_packet] : time out\n");
-        free(error_packet); 
-        return -1;
     }
     if(status.trace){
         trace_sent(error_packet,packet_size);
@@ -204,10 +171,6 @@ int send_data_packet(config status,int block_number,char* data, const struct soc
             free(data_packet); 
             return -1;
         }
-        //Time out reached
-        printf("[send_data_packet] : time out\n");
-        free(data_packet); 
-        return -1;
     }
     if(status.trace){
         trace_sent(data_packet,packet_size);

@@ -3,6 +3,9 @@
 ### Simple TFTP Server program
 ### Simple TFTP Client program
 
+## NOTE 1 
+We respected the tftp RFC, it means that the transfer does not have any security.
+If you want us to implement something more secure, you are welcome.
 
 ## Compilation
 
@@ -26,7 +29,7 @@ you will need to be in tftp_client folder :
 for example to connect to the real TFTP server installed on local machine :
 ./client 127.0.0.1 69 0
 
-## NOTE 
+## NOTE 2
 in this implementation, even if you choose packet loss percentage to be 0 : 
 
 [packet loss] sending data#1

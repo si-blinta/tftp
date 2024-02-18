@@ -329,7 +329,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
         
         
         if(last_block_number_received != get_block_number(packet)){
-            fwrite(get_data(packet), 1, bytes_received - 4, requested_file);
+            fwrite(packet+4, 1, bytes_received - 4, requested_file);
             last_block_number_received = get_block_number(packet);  // update last block #
             total_bytes_received+= bytes_received-4; // increments bytes received if its new data packet
         }

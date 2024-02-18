@@ -143,14 +143,12 @@ char* get_mode(char* packet);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
- * @brief Prints the request in the form of : opcode
- *                                            filename
- *                                            mode
+ * @brief Extracts the block number of a DATA packet.
  * 
- * @param packet The TFTP packet from which to extract the informations.
- * @return Nothing
+ * @param packet Data packet.
+ * @return the Data User must free the string.
  */
-void print_request_packet(char* packet);
+char* get_data(char* packet);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -198,23 +196,6 @@ char* build_error_packet(uint16_t error_code, char* error_msg,size_t* packet_siz
  * @return block number.
  */
 uint16_t get_block_number(char* packet);
-
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief Extracts the block number of a DATA packet.
- * 
- * @param packet Data packet.
- * @return the Data.
- */
-char* get_data(char* packet);
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief print the data packet , for debugging.
- * 
- * @param packet Data packet
- * @return nothing.
- */
-void print_data_packet(char* packet);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
