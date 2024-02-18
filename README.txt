@@ -2,7 +2,10 @@
 
 ### Simple TFTP Server program
 ### Simple TFTP Client program
-
+### A Server Directory : server_directory containing :
+                                                      -ai.png
+                                                      -test.txt
+Every file is requested/sent from/to server_directory ! 
 ## NOTE 1 
 We respected the tftp RFC, it means that the transfer does not have any security.
 If you want us to implement something more secure, you are welcome.
