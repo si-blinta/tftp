@@ -146,7 +146,7 @@ char* get_mode(char* packet);
  * @brief Extracts the block number of a DATA packet.
  * 
  * @param packet Data packet.
- * @return the Data User must free the string.
+ * @return the Data
  */
 char* get_data(char* packet);
 

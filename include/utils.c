@@ -18,11 +18,8 @@ char* get_mode(char* packet){
     free(filename);
     return mode;
 }
-//Not used for the moment because it needs to allocate and free every time which is bad
 char* get_data(char* packet){
-    char* data = strdup(packet+4);
-    return data;
-
+    return packet+4;
 }
 uint16_t get_error_code(char* packet){
     uint16_t error_code;

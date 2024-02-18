@@ -232,7 +232,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         }
         //write the data if the data packet received is different from the last one
         if(last_block_number_received != get_block_number(data_packet)){
-            fwrite(data_packet+4, 1, bytes_received - 4, received_file);
+            fwrite(get_data(data_packet), 1, bytes_received - 4, received_file);
             last_block_number_received = get_block_number(data_packet);// update last block #
         }
         //break if its the last data packet
