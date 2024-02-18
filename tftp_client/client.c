@@ -320,7 +320,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             }
             return -1;
         }
-        printf("attempt sending ack %d\n",get_block_number(packet));
+        printf("[packet loss] sending ack %d\n",get_block_number(packet));
         if(!packet_loss(status.packet_loss_percentage)){
             if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd) == -1){
                 return -1;
