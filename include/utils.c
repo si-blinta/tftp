@@ -251,3 +251,13 @@ void trace_received(char* packet,size_t packet_size){
             break;
     }
 }
+int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec){
+    struct timeval timeout;
+    timeout.tv_sec = time_sec;
+    timeout.tv_usec = time_usec;
+    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
+        perror("[setsockopt]\n");
+        return -1;
+    }
+    return 0;
+}

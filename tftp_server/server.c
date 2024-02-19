@@ -19,7 +19,8 @@ static int init_tftp_server(int port,int* sockfd) {
     return 0;
 }
 static int handle_client_requests(config status,int sockfd){
-    
+    //Make the recfrom blocking to limit cpu usage when waiting
+    set_socket_timer(sockfd,0,0);
     char packet[MAX_BLOCK_SIZE];
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
@@ -28,7 +29,7 @@ static int handle_client_requests(config status,int sockfd){
             perror("[recvfrom][handle_client_requests]");
             return -1;
         }
-    return 0;    
+        return 0;    
     }
     
     uint16_t opcode = get_opcode(packet);
@@ -59,12 +60,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
     *   before resending the data packet, assuming that it got lost.
     */
-    struct timeval per_packet_timeout;      
-    per_packet_timeout.tv_sec = status.per_packet_time_out ;
-    per_packet_timeout.tv_usec = 0;
-    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
-        perror("[setsockopt][process_rrq]\n");
-    } 
+    set_socket_timer(sockfd,status.per_packet_time_out,0);
     u_int8_t timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];   // ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
@@ -157,12 +153,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
     *   when receiving the same packet before quiting the program.
     */
-    struct timeval timeout;
-    timeout.tv_sec = status.timemout;
-    timeout.tv_usec = 0;
-    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
-        perror("[setsockopt]\n");
-    }
+    set_socket_timer(sockfd,status.timemout,0);
     char path[100] = SERVER_DIRECTORY;
     strcat(path,filename); 
     FILE* received_file = NULL;

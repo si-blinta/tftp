@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <time.h>
 #include <strings.h>
+#include <assert.h>
 #define MAX_BLOCK_SIZE 516
 
 typedef struct {
@@ -294,12 +295,9 @@ int packet_loss(uint8_t loss_percentage);
  * @brief Make the socket unblocking after a certain time.
  * @param sockfd The file descriptor of the socket.
  * @param time_sec   The time in seconds.
- * @param time_msec  The time in milliseconds.
+ * @param time_usec  The time in micro seconds.
 */
-int set_socket_timer(uint8_t sockfd,uint8_t timer_sec, uint8_t time_msec);
-
-
-
+int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec);
 
 
 

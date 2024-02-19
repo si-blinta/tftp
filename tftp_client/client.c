@@ -145,12 +145,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
     *   before resending the data packet, assuming that it got lost.
     */
-    struct timeval per_packet_timeout;      
-    per_packet_timeout.tv_sec = status.per_packet_time_out ;
-    per_packet_timeout.tv_usec = 0;
-    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
-        perror("[setsockopt][process_rrq]\n");
-    } 
+    set_socket_timer(sockfd,status.per_packet_time_out,0);
     uint8_t timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
@@ -267,13 +262,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
     *   when receiving the same packet before quiting the program.
     */
-    
-    struct timeval timeout;
-    timeout.tv_sec = status.timemout;
-    timeout.tv_usec = 0;
-    if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0){
-        perror("[setsockopt]\n");
-    }
+    set_socket_timer(sockfd,status.timemout,0);
     FILE* requested_file = NULL;
     // TODO : gerer le cas netascii
     if(!strcasecmp(status.transfer_mode,"octet")){
