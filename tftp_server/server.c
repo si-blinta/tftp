@@ -82,35 +82,24 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     uint16_t block_number = 1;       //current data block#
 
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
-        printf("[packet loss] sending data#%d\n",block_number);
-        if(!packet_loss(status.packet_loss_percentage)){
-            if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
-                fclose(requested_file);
-                return -1;
-            }
+        if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
+            fclose(requested_file);
+            return -1;
         }
-        bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
-        while (bytes_received == -1) { 
+        while ((bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0)) == -1) { 
+            //Increment the time out for the actual ack packet.
+            timeout+=status.per_packet_time_out;
             //Error recvfrom
             if(errno != EAGAIN && errno != EWOULDBLOCK){
                 perror("[recvfrom]");
                 fclose(requested_file); 
                 return -1;
             }
-            // Per packet time out reached : Didnt receive ack packet
-            // Resend data
-            printf("[packet loss] sending data#%d\n",block_number);
-            if(!packet_loss(status.packet_loss_percentage)){
-                if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
-                    fclose(requested_file);
-                    return -1;
-                }
+            if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd)){
+                fclose(requested_file);
+                return -1;
             }
-            // Wait for ack again
-            bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
-
-            //Increment the time out for the actual ack packet.
-            timeout+=status.per_packet_time_out;
+            
             //Check if we exceeded the time out for the same packet.
             if(timeout >= status.timemout){
                 printf("RRQ FAILED : time out reached : %d seconds\n",timeout);
@@ -186,13 +175,10 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
             fclose(received_file);
             return -1;
         }
-        printf("[packet loss] sending ack#%d\n",get_block_number(data_packet));
-        //if there is no packet loss we send the ack.
-        if(!packet_loss(status.packet_loss_percentage)){
-            if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
-                return -1;
+        if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd) == -1){
+            return -1;
             }
-        }
+        
         //write the data if the data packet received is different from the last one
         if(last_block_number_received != get_block_number(data_packet)){
             fwrite(get_data(data_packet), 1, bytes_received - 4, received_file);
@@ -211,12 +197,12 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
 int main(int argc, char**argv)
 {   
     srand(time(NULL));
-    if(argc < 3){
-        printf("USAGE ./server [port] [packet loss percentage (between 0 and 100)]\n");
+    if(argc < 2){
+        printf("USAGE ./server [port]\n");
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[2])};
+    config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10};
     int sockfd;
     int error = 0;
     if(init_tftp_server(server_port,&sockfd) == -1){

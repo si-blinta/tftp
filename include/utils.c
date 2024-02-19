@@ -1,8 +1,4 @@
 #include "utils.h"
-int packet_loss(uint8_t loss_percentage) {
-    int rand_val = rand() % 100;
-    return rand_val < loss_percentage;
-}
 uint16_t get_opcode(char* packet){
     uint16_t opcode;
     memcpy(&opcode, packet, sizeof(opcode));

@@ -14,14 +14,12 @@
 #include <strings.h>
 #include <assert.h>
 #define MAX_BLOCK_SIZE 516
-
 typedef struct {
     char* server_ip ;                // server ip
     char* transfer_mode;          // transfer mode , we only implemented octet
     uint8_t trace;                // tracing packets : for debugging 
     uint8_t per_packet_time_out ; // per-packet retransmission timeout
     uint8_t timemout;             // total retransmission timeout for a single packet.
-    uint8_t packet_loss_percentage;
 }config;
 
 
@@ -281,14 +279,6 @@ void trace_sent(char* packet,size_t packet_size);
  * @return Nothing
  */
 void trace_received(char* packet,size_t packet_size);
-
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------
-/**
- * @brief Simulates packet loss chance.
- * @param loss_percentage The percentage of packet loss occuring.
- * @return 1 if no packet loss and 0 if we have a packet loss
- */
-int packet_loss(uint8_t loss_percentage);
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
