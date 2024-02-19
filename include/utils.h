@@ -239,7 +239,7 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
  * @param sockfd The socket file descriptor used to send the packet.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_error_packet(config status,int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
+int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -252,7 +252,7 @@ int send_error_packet(config status,int error_code,char* error_msg, const struct
  * @param sockfd The socket file descriptor used to send the packet.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_data_packet(config status,int block_number,char* data, const struct sockaddr_in* client_addr,int data_length, int sockfd);
+int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd);
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -287,10 +287,16 @@ void trace_received(char* packet,size_t packet_size);
  * @param loss_percentage The percentage of packet loss occuring.
  * @return 1 if no packet loss and 0 if we have a packet loss
  */
-int packet_loss(int loss_percentage);
+int packet_loss(uint8_t loss_percentage);
 
-
-int set_socket_timer();
+//----------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Make the socket unblocking after a certain time.
+ * @param sockfd The file descriptor of the socket.
+ * @param time_sec   The time in seconds.
+ * @param time_msec  The time in milliseconds.
+*/
+int set_socket_timer(uint8_t sockfd,uint8_t timer_sec, uint8_t time_msec);
 
 
 

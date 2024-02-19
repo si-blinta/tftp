@@ -65,7 +65,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
         perror("[setsockopt][process_rrq]\n");
     } 
-    int timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
+    u_int8_t timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];   // ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;
@@ -83,7 +83,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     memset(data, 0, sizeof(data));
     size_t bytes_read = 0;      //bytes read from fread
     size_t bytes_received = 0;  //bytes received from recvfrom
-    int block_number = 1;       //current data block#
+    uint16_t block_number = 1;       //current data block#
 
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
         printf("[packet loss] sending data#%d\n",block_number);
@@ -176,7 +176,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         send_error_packet(status,NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd);
         return -1;
     }
-    int last_block_number_received = 0; // to keep track of the last block# in case of packet loss.
+    uint16_t last_block_number_received = 0; // to keep track of the last block# in case of packet loss.
     char data_packet[MAX_BLOCK_SIZE];              // where to store the data packet.
     memset(data_packet,0,sizeof(data_packet));
     size_t bytes_received;              // size of bytes received from the client. 

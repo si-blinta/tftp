@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -I../include
-LDFLAGS :=
+LDFLAGS := -Wall
 SRC := server.c ../include/utils.c
 SERVER_BIN := server
 

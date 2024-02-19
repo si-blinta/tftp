@@ -1,5 +1,5 @@
 #include "utils.h"
-int packet_loss(int loss_percentage) {
+int packet_loss(uint8_t loss_percentage) {
     int rand_val = rand() % 100;
     return rand_val < loss_percentage;
 }
@@ -135,7 +135,7 @@ char* build_ack_packet(uint16_t block_number, size_t* packet_size) {
 
     return packet;
 }
-int send_error_packet(config status,int error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
+int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
     size_t packet_size;
     char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
     if(error_packet == NULL){
@@ -155,7 +155,7 @@ int send_error_packet(config status,int error_code,char* error_msg, const struct
     free(error_packet); 
     return 0;
 }
-int send_data_packet(config status,int block_number,char* data, const struct sockaddr_in* client_addr,int data_length, int sockfd){
+int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd){
     size_t packet_size;
     char* data_packet = build_data_packet(block_number,data,data_length,&packet_size);
     if(data_packet == NULL){

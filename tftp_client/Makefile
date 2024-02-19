@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -I../include
-LDFLAGS :=
+LDFLAGS := -Wall
 SRC := client.c ../include/utils.c
 client_BIN := client
 

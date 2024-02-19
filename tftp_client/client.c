@@ -151,7 +151,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     if (setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, &per_packet_timeout,sizeof per_packet_timeout) < 0){
         perror("[setsockopt][process_rrq]\n");
     } 
-    int timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
+    uint8_t timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;  
@@ -175,7 +175,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     size_t bytes_read;                  // bytes_read using fread
     socklen_t len = sizeof(*server_addr);       // size of the server adress
     size_t bytes_received = 0;
-    int block_number = 1;               // the current block 
+    uint16_t block_number = 1;               // the current block 
  
     // Wait for the initial ACK for the WRQ
     bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len);
@@ -289,7 +289,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     char packet[MAX_BLOCK_SIZE];
     memset(packet, 0, sizeof(packet));
     socklen_t len = sizeof(*server_addr);   
-    int last_block_number_received = 0; // starts with a number != 1
+    uint16_t last_block_number_received = 0; // starts with a number != 1
     time_t start = time(NULL);
     // Send RRQ 
     if(request(RRQ, filename, status, sockfd, (struct sockaddr*)server_addr) == -1){
@@ -365,7 +365,6 @@ int main(int argc, char const* argv[]) {
     while(1){
         printf("<tftp>");
         scanf("%s",command);
-        process_command(command,&status,server_addr,sockfd);
-
+        if(process_command(command,&status,server_addr,sockfd) == -1)break;
     }  	
 }
