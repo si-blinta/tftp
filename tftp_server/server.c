@@ -118,29 +118,15 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
                 return -1;
             }
         }
+        if(check_packet(ack_packet,ACK,status,client_addr,sockfd) == -1){
+            fclose(requested_file);
+            return -1;
+        }
         // An ACK packet is received :
         timeout = 0;                //Reset time out , because a new data block is about to be sent
         block_number++ ;           //Increment block number
         if(status.trace){
             trace_received(ack_packet,bytes_received);
-        }
-        // If the packet is not an ack
-        if(get_opcode(ack_packet) != ACK){
-            // if it is an error packet we print error and we quit
-            if (get_opcode(ack_packet) == ERROR) {    
-                print_error_message(ack_packet);
-                break;
-            }
-            // if its other type
-            else {
-                if(send_error_packet(status,NOT_DEFINED,"Expected Ack packet",client_addr,sockfd)){
-                    fclose(requested_file);
-                    return -1;
-                }
-                printf("RRQ FAILED : Unexpected packet\n");
-                fclose(requested_file);
-                return -1;
-            }
         }
     }
     fclose(requested_file); 
@@ -196,23 +182,9 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
         if(status.trace){
             trace_received(data_packet,bytes_received);
         }
-         // If the packet is not data
-        if(get_opcode(data_packet) != DATA){
-            // if it is an error packet we print error and we quit
-            if (get_opcode(data_packet) == ERROR) {    
-                print_error_message(data_packet);
-                break;
-            }
-            // if its other type
-            else {
-                if(send_error_packet(status,NOT_DEFINED,"Expected data packet",client_addr,sockfd)){
-                    fclose(received_file);
-                    return -1;
-                }
-                printf("RRQ FAILED : Unexpected packet\n");
-                fclose(received_file);
-                return -1;
-            }
+        if(check_packet(data_packet,DATA,status,client_addr,sockfd) == -1){
+            fclose(received_file);
+            return -1;
         }
         printf("[packet loss] sending ack#%d\n",get_block_number(data_packet));
         //if there is no packet loss we send the ack.

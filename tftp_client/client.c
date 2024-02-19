@@ -223,8 +223,13 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
             if(timeout >= status.timemout){
                 printf("[put] : time out reached : %d seconds\n",timeout);
                 fclose(requested_file);
-                return 1;
+                return -1;
             }
+        }
+        //Check for unexpected packets
+        if(check_packet(ack_packet,ACK,status,server_addr,sockfd) == -1){
+            fclose(requested_file);
+            return -1;
         }
         // An ACK packet is received :
         timeout = 0;                //Reset time out , because a new data block is about to be sent
@@ -232,25 +237,6 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
         if(status.trace){
             trace_received(ack_packet,bytes_received);
         }
-        // If the packet is not an ack
-        if(get_opcode(ack_packet) != ACK){
-            // if it is an error packet we print error and we quit
-            if (get_opcode(ack_packet) == ERROR) {    
-                print_error_message(ack_packet);
-                break;
-            }
-            // if its other type
-            else {
-                if(send_error_packet(status,NOT_DEFINED,"Expected data packet",server_addr,sockfd)){
-                    fclose(requested_file);
-                    return -1;
-                }
-                printf("[put] : unexpected packet\n");
-                fclose(requested_file);
-                return -1;
-            }
-        }
-        
     }
     time_t end = time(NULL);
     printf("Sent %ld bytes in %lf secondes\n",total_bytes_sent,difftime(end, start));
@@ -301,12 +287,8 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
         if(status.trace){
             trace_received(packet,bytes_received);
         }
-        if(get_opcode(packet) == ERROR){
-            printf("[get] : error code = %d : error message : %s\n",get_error_code(packet),get_error_message(packet));
-            if(remove(filename)){
-                fclose(requested_file);
-                perror("[remove]");
-            }
+        if(check_packet(packet,DATA,status,server_addr,sockfd) == -1){
+            fclose(requested_file);
             return -1;
         }
         printf("[packet loss] sending ack %d\n",get_block_number(packet));
@@ -315,8 +297,6 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
                 return -1;
             }
         }
-        
-        
         if(last_block_number_received != get_block_number(packet)){
             fwrite(get_data(packet), 1, bytes_received - 4, requested_file);
             last_block_number_received = get_block_number(packet);  // update last block #

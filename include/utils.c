@@ -261,3 +261,19 @@ int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec){
     }
     return 0;
 }
+int check_packet(char* packet, int type,config status,const struct sockaddr_in* addr,int sockfd){
+        if(get_opcode(packet) != type){
+            // if it is an error packet we print error and we quit
+            if (get_opcode(packet) == ERROR) {    
+                print_error_message(packet);
+                return -1 ;
+            }
+            // if its other type
+            else {
+                send_error_packet(status,NOT_DEFINED,"Unexpected packet",addr,sockfd);
+                printf("[put] : Unexpected packet\n");
+                return -1;
+            }
+        }
+        return 0;
+}

@@ -296,9 +296,21 @@ int packet_loss(uint8_t loss_percentage);
  * @param sockfd The file descriptor of the socket.
  * @param time_sec   The time in seconds.
  * @param time_usec  The time in micro seconds.
+ * @return 0 on success and -1 on error.
 */
 int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec);
 
+//------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Check if the packet is expected , if not this function handles the errors.
+ * @param packet The packet.
+ * @param expected_type  The expected packet type. (ACK-ERROR-DATA-RRQ-WRQ)
+ * @param status The config
+ * @param addr The adress to send information on error.
+ * @param sockfd The socket file descriptor.
+ * @return 0 on success and -1 on error
+*/
+int check_packet(char* packet, int type, config status, const struct sockaddr_in* addr,int sockfd);
 
 
 
