@@ -1,7 +1,24 @@
 #ifndef SERVER_H
 #define SERVER_H
 #include "utils.h"
+#include <pthread.h>
 #define SERVER_DIRECTORY "../server_directory/"
+#define POOL_SIZE 2
+typedef struct {
+    int id;
+    int working;
+    pthread_t thread;
+    config status;
+    int sockfd;
+    char* packet;
+    struct sockaddr_in client_addr;
+}thread_context;
+
+enum work_type{
+    NOTHING,
+    READING,
+    WRITING
+};
 
 //-------------------------------------------------------------------------------------
 /**
@@ -22,7 +39,7 @@ static int init_tftp_server(int port,int* sockfd);
  * 
  * @param sockfd The socket file descriptor used to listen for incoming requests.
  */
-static int handle_client_requests(config status,int sockfd);
+void* handle_client_requests(void* args);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -35,7 +52,7 @@ static int handle_client_requests(config status,int sockfd);
  * @param sockfd The socket file descriptor for communicating with the client.
  * @return Returns 0 on success, -1 on failure.
  */
-static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
+static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd, int thread_id, int* thread_working);
 //-------------------------------------------------------------------------------------
 /**
  * @brief Processes a write request from a client.
@@ -47,7 +64,7 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
  * @param sockfd The socket file descriptor for communicating with the client.
  * @return Returns 0 on success, -1 on failure.
  */
-static int process_wrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
+static int process_wrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd, int thread_id,int* thread_working);
 
 //-------------------------------------------------------------------------------------
 /**

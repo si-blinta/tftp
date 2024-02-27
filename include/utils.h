@@ -229,7 +229,7 @@ char* build_data_packet(uint16_t block_number, const char* data, size_t data_len
  * @param sockfd The socket file descriptor used to send the packet.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd);
+int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd,int thread_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -240,7 +240,7 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
  * @param sockfd The socket file descriptor used to send the packet.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
+int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd,int thread_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -253,7 +253,7 @@ int send_error_packet(config status,uint8_t error_code,char* error_msg, const st
  * @param sockfd The socket file descriptor used to send the packet.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd);
+int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd,int thread_id);
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -271,7 +271,7 @@ void print_error_message(char* error_packet);
  * @param packet_size The size of the packet.
  * @return Nothing
  */
-void trace_sent(char* packet,size_t packet_size);
+void trace_sent(char* packet,size_t packet_size, int thread_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -280,7 +280,7 @@ void trace_sent(char* packet,size_t packet_size);
  * @param packet_size The size of the packet.
  * @return Nothing
  */
-void trace_received(char* packet,size_t packet_size);
+void trace_received(char* packet,size_t packet_size, int thread_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -310,7 +310,7 @@ int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec);
  * @param sockfd The socket file descriptor.
  * @return 0 on success and -1 on error
 */
-int check_packet(char* packet, int type, config status, const struct sockaddr_in* addr,int sockfd);
+int check_packet(char* packet, int type, config status, const struct sockaddr_in* addr,int sockfd,int thread_id);
 
 
 

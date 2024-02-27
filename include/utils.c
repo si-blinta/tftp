@@ -36,7 +36,7 @@ uint16_t get_block_number(char* packet){
     memcpy(&block_number, packet + 2, sizeof(block_number));
     return ntohs(block_number);
 }
-int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd) {
+int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd,int thread_id) {
     size_t packet_size;
     char* ack_packet = build_ack_packet(block_number, &packet_size);
 
@@ -57,7 +57,7 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
         return -1;
     }
     if(status.trace){
-        trace_sent(ack_packet,packet_size);
+        trace_sent(ack_packet,packet_size,thread_id);
     }
     free(ack_packet);
     return 0;
@@ -135,7 +135,7 @@ char* build_ack_packet(uint16_t block_number, size_t* packet_size) {
 
     return packet;
 }
-int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd){
+int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd,int thread_id){
     size_t packet_size;
     char* error_packet = build_error_packet(error_code, error_msg, &packet_size);
     if(error_packet == NULL){
@@ -150,12 +150,12 @@ int send_error_packet(config status,uint8_t error_code,char* error_msg, const st
         }
     }
     if(status.trace){
-        trace_sent(error_packet,packet_size);
+        trace_sent(error_packet,packet_size,thread_id);
     }
     free(error_packet); 
     return 0;
 }
-int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd){
+int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd, int thread_id){
     size_t packet_size;
     char* data_packet = build_data_packet(block_number,data,data_length,&packet_size);
     if(data_packet == NULL){
@@ -170,7 +170,7 @@ int send_data_packet(config status,uint16_t block_number,char* data, const struc
         }
     }
     if(status.trace){
-        trace_sent(data_packet,packet_size);
+        trace_sent(data_packet,packet_size,thread_id);
     }
     free(data_packet); 
     return 0;
@@ -178,13 +178,14 @@ int send_data_packet(config status,uint16_t block_number,char* data, const struc
 void print_error_message(char* error_packet){
     printf("[ERROR] Code = %d : Message = %s\n", get_error_code(error_packet), get_error_message(error_packet));
 }
-void trace_sent(char* packet,size_t packet_size){
+void trace_sent(char* packet,size_t packet_size,int thread_id){
     char* filename = NULL;
     char* transfer_mode = NULL;
     switch(get_opcode(packet)){
         case RRQ:{
             filename = get_file_name(packet);
             transfer_mode= get_mode(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("sent RRQ <file=%s, mode=%s>\n",filename,transfer_mode);
             free(filename);
             free(transfer_mode);
@@ -193,21 +194,25 @@ void trace_sent(char* packet,size_t packet_size){
         case WRQ:{
             filename = get_file_name(packet);
             transfer_mode = get_mode(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("sent WRQ <file=%s, mode=%s>\n",filename,transfer_mode);
             free(filename);
             free(transfer_mode);
             break;
         }
         case ACK:{
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("sent ACK <block=%d>\n",get_block_number(packet));
             break;
         }
         case DATA:{
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("sent DATA <block=%d, %ld bytes>\n",get_block_number(packet),packet_size);
             break;
         }
         case ERROR:{
             char* error_msg = get_error_message(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("sent ERROR <code=%d, msg=%s>\n",get_error_code(packet),error_msg);
             free(error_msg);
             break;
@@ -217,7 +222,7 @@ void trace_sent(char* packet,size_t packet_size){
     }
 }
 
-void trace_received(char* packet,size_t packet_size){
+void trace_received(char* packet,size_t packet_size,int thread_id){
     char* filename = NULL;
     char* transfer_mode = NULL;
     char* error_msg = NULL;
@@ -225,6 +230,7 @@ void trace_received(char* packet,size_t packet_size){
         case RRQ:
             filename = get_file_name(packet);
             transfer_mode= get_mode(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("received RRQ <file=%s, mode=%s>\n",filename,transfer_mode);
             free(filename);
             free(transfer_mode);
@@ -232,18 +238,22 @@ void trace_received(char* packet,size_t packet_size){
         case WRQ:
             filename = get_file_name(packet);
             transfer_mode = get_mode(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("received WRQ <file=%s, mode=%s>\n",filename,transfer_mode);
             free(filename);
             free(transfer_mode);
             break;
         case ACK:
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("received ACK <block=%d>\n",get_block_number(packet));
             break;
         case DATA:
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("received DATA <block=%d, %ld bytes>\n",get_block_number(packet),packet_size);
             break;
         case ERROR:
             error_msg = get_error_message(packet);
+            if(thread_id != -1)printf("THREAD # %d ",thread_id);
             printf("received ERROR <code=%d, msg=%s>\n",get_error_code(packet),get_error_message(packet));
             free(error_msg);
             break;
@@ -261,7 +271,7 @@ int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec){
     }
     return 0;
 }
-int check_packet(char* packet, int type,config status,const struct sockaddr_in* addr,int sockfd){
+int check_packet(char* packet, int type,config status,const struct sockaddr_in* addr,int sockfd,int thread_id){
         if(get_opcode(packet) != type){
             // if it is an error packet we print error and we quit
             if (get_opcode(packet) == ERROR) {    
@@ -270,7 +280,7 @@ int check_packet(char* packet, int type,config status,const struct sockaddr_in* 
             }
             // if its other type
             else {
-                send_error_packet(status,NOT_DEFINED,"Unexpected packet",addr,sockfd);
+                send_error_packet(status,NOT_DEFINED,"Unexpected packet",addr,sockfd,thread_id);
                 printf("[put] : Unexpected packet\n");
                 return -1;
             }
