@@ -2,7 +2,6 @@
 #define UTILS_H
 #include <stdio.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <stdlib.h>
@@ -10,11 +9,12 @@
 #include <unistd.h>
 #include <arpa/inet.h> 
 #include <errno.h>
+#include <sys/time.h>
 #include <time.h>
 #include <strings.h>
 #include <assert.h>
+#include <signal.h>
 #define MAX_BLOCK_SIZE 516
-
 typedef struct {
     char* server_ip ;                // server ip
     char* transfer_mode;          // transfer mode , we only implemented octet

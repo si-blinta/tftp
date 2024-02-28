@@ -59,7 +59,7 @@ static void print_status(config status){
     printf("Per Packet timeout: %d seconds\n",status.per_packet_time_out);
     printf("Timeout: %d seconds\n",status.timemout);
 }
-static int process_command(char* command,config* status,struct sockaddr_in server_addr,int sockfd) {
+static void process_command(char* command,config* status,struct sockaddr_in server_addr,int sockfd) {
     /**
      * Very important ! 
      * here we pass a pointer to the server_adress to handle_put and handle_get commands , note that this function
@@ -127,9 +127,9 @@ static int connect_to_tftp_server(int per_packet_timout,const char* server_ip, i
     server_addr->sin_addr.s_addr = inet_addr(server_ip); 
     return 0;
 }
-static void set_file_transfer_mode(const char* mode,char* transfer_mode){
+/*static void set_file_transfer_mode(const char* mode,char* transfer_mode){
         strcpy(transfer_mode,mode);
-}
+}*/
 static void set_trace(config* status){
         if(status->trace){
             status->trace = 0;
@@ -145,7 +145,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
     *   before resending the data packet, assuming that it got lost.
     */
-    set_socket_timer(sockfd,status.per_packet_time_out,0);
+    set_socket_timer(sockfd,status.timemout,0);
     uint8_t timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
     char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
@@ -176,54 +176,44 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len);
     if (bytes_received == -1) {
         if(errno != EWOULDBLOCK && errno != EAGAIN){
-                perror("[recvfrom]");
-                fclose(requested_file);
-                return -1 ;
-            }
-        printf("[put] : time out reached for first ack 0  : %d seconds\n",status.per_packet_time_out);
+            perror("[recvfrom]");
+            fclose(requested_file);
+            return -1 ;
+        }
+        printf("[put] : time out reached : %d seconds\n",status.timemout);
         fclose(requested_file);
         return -1 ;
     }
     if(status.trace){
         trace_received(ack_packet,bytes_received,-1);
     }
-
-    if (get_opcode(ack_packet) == ERROR) {    
-            print_error_message(ack_packet);
-            fclose(requested_file);
-            return 0 ;
-        }  
+    if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
+        fclose(requested_file);
+        return -1;
+    }
+    //change recvfrom timer 
+    set_socket_timer(sockfd,status.per_packet_time_out,0);
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
-        printf("[packet loss] sending data#%d\n",block_number);
-        if(!packet_loss(status.packet_loss_percentage)){      
-            if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-                    fclose(requested_file);
-                    return -1;
-                }
-            total_bytes_sent+= bytes_read;  //Increment bytes sent     
+        if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
+            fclose(requested_file); 
+            return -1;
         }
-        bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len);
-        while (bytes_received == -1) {
+        
+        total_bytes_sent+= bytes_read;  //Increment bytes sent     
+        while ( (bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len)) == -1) {
+            //Increment the time out for the actual ack packet.
+            timeout+=status.per_packet_time_out;
             //Error recvfrom
             if(errno != EWOULDBLOCK && errno != EAGAIN){
                 perror("[recvfrom]");
                 fclose(requested_file);
                 return -1 ;
             }
-            // Per packet time out reached : Didnt receive ack packet
-            // Resend data
-            printf("[packet loss] sending data#%d\n",block_number);
-            if(!packet_loss(status.packet_loss_percentage)){
-                if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-                    fclose(requested_file);
-                    return -1;
-                }
+            if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
+                fclose(requested_file);
+                return -1;
             }
-            // Wait for ack again
-            bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0,(struct sockaddr*)server_addr, &len);
-
-            //Increment the time out for the actual ack packet.
-            timeout+=status.per_packet_time_out;
+            
             //Check if we exceeded the time out for the same packet.
             if(timeout >= status.timemout){
                 printf("[put] : time out reached : %d seconds\n",timeout);
@@ -296,12 +286,9 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             fclose(requested_file);
             return -1;
         }
-        printf("[packet loss] sending ack %d\n",get_block_number(packet));
-        if(!packet_loss(status.packet_loss_percentage)){
-            if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd,-1) == -1){
-                return -1;
+        if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd,-1) == -1){
+            return -1;
             }
-        }
         if(last_block_number_received != get_block_number(packet)){
             fwrite(get_data(packet), 1, bytes_received - 4, requested_file);
             last_block_number_received = get_block_number(packet);  // update last block #
@@ -311,7 +298,6 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
         if (bytes_received < MAX_BLOCK_SIZE) {
             break;
         }
-
     }
     fclose(requested_file);
     time_t end = time(NULL);
@@ -324,11 +310,11 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
 
 int main(int argc, char const* argv[]) {
     srand(time(NULL));
-    if(argc < 4){
-        printf("USAGE ./client [server ip] [server port] [packet loss percentage (between 0 and 100)]\n");
+    if(argc < 3){
+        printf("USAGE ./client [server ip] [server port]\n");
         return 0;
     }
-    config status = {.server_ip = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage = (uint8_t)atoi(argv[3])};
+    config status = {.server_ip = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10};
     int server_port = atoi(argv[2]);
     int sockfd;
     struct sockaddr_in server_addr;
@@ -339,6 +325,6 @@ int main(int argc, char const* argv[]) {
     while(1){
         printf("<tftp>");
         scanf("%s",command);
-        if(process_command(command,&status,server_addr,sockfd) == -1)break;
+        process_command(command,&status,server_addr,sockfd) ;
     }  	
 }

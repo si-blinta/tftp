@@ -3,7 +3,7 @@
 #include "utils.h"
 #include <pthread.h>
 #define SERVER_DIRECTORY "../server_directory/"
-#define POOL_SIZE 2
+#define POOL_SIZE 3
 typedef struct {
     int id;
     int working;
@@ -21,29 +21,22 @@ typedef struct {
 }file_control;
 
 enum file_satus{
-    READ,
-    WRITE,
-    INIT
+    FILE_READ,
+    FILE_WRITE,
+    FILE_IDLE
 };
-
 enum thread_work_type{
-    NOTHING,
-    READING,
-    WRITING
+    THREAD_IDLE,
+    THREAD_READING,
+    THREAD_WRITING
 };
-
 /**
  * MULTITHREADING : 
  * FOR NOW IF I USE GET THEN PUT EVERYTHING IS GUCCI
  *  BUG : IF I USE PUT THEN GET --------------------------> BUG THE THREADS WAITS FOR THE LOCK THE CLIENT TIME OUTS BUT NOT THE SERVER
  *  TODO: LOCK MUTEX WITH TIMER TO NOT BLOCK FOREVER , SEND AN ERROR PACKET TO THE CLIENT
  * 
- * / 
-
-
-
-
-
+ * */
 
 
 //-------------------------------------------------------------------------------------
@@ -97,7 +90,7 @@ static int process_wrq(config status,char* filename,char* mode, const struct soc
  * @brief Initializes file_control structure.Puts filename to NULL and status to INIT.
  * @param fc The adress of the structure.
  */
-void init_file_control(file_control fc[POOL_SIZE]);
+void file_controlinitfile_control (file_control  fc[POOL_SIZE]);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -114,7 +107,7 @@ void file_control_modify(file_control fc[POOL_SIZE], int status, int thread_id, 
  * @brief Determins if we can do an operation on a file.
  * @param fc The structure.
  * @param filename  The filename to check if its opened.
- * @param status The type of operation that we want to do : READ / WRITE / INIT
+ * @param status The type of operation that we want to do : FILE_READ / FILE_WRITE / FILE_IDLE
  * @return the thread_id that opened the file  , -1 if the file is not opened.
  * 
  */
@@ -122,17 +115,32 @@ int file_control_available(file_control fc[POOL_SIZE],char* filename, int status
 
 //-------------------------------------------------------------------------------------
 /**
- * @brief Determins if we can do an operation on a file.
- * @param fc The structure.
- * @param filename  The filename to check if its opened.
- * @param status The type of operation that we want to do : READ / WRITE / INIT
- * @return the thread_id that opened the file  , -1 if the file is not opened.
+ * @brief Handles the Readers Writers problem , it also handles the case when a mutex lock takes a lot of time , so it times out .
+ * @param thread_id The thread id .
+ * @param filename  The name of the file that we want to access.
+ * @param status The type of operation that we want to do : FILE_READ / FILE_WRITE / FILE_IDLE 
+ * @return the thread_id that opened the file  , -1 if the file is not opened and -2 if the lock of the mutex takes a long time.
+ * 
+ */
+int file_control_synchronize(char* filename,int thread_id, int status);
+
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Unlocks mutexes and updates files_opened global variable.
+ * @param thread_id The thread id .
+ * @param id_opened  The return value of the function file_control_synchronize.
+ * ( very important, to avoid unlocking a mutex that is not locked this can happen when a mutex_lock timed out  )
+ * @param status The type of operation that we want to do : FILE_READ / FILE_WRITE / FILE_IDLE 
  * 
  */
 void file_control_exit(int thread_id,int id_opened, int status );
 
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Prints files opened and their operations : for debug purposes
+ * 
+ */
+void file_control_print();
 
 
-
-int file_control_synchronize(char* filename,int thread_id, int status);
 #endif // SERVER_H

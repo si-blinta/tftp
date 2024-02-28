@@ -212,7 +212,9 @@ void trace_sent(char* packet,size_t packet_size,int thread_id){
         }
         case ERROR:{
             char* error_msg = get_error_message(packet);
-            if(thread_id != -1)printf("THREAD # %d ",thread_id);
+            if(thread_id != -1){
+                printf("THREAD # %d ",thread_id);
+                }
             printf("sent ERROR <code=%d, msg=%s>\n",get_error_code(packet),error_msg);
             free(error_msg);
             break;
