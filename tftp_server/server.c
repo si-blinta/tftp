@@ -1,4 +1,61 @@
 #include "server.h"
+
+//Global shared variables 
+file_control files_open[POOL_SIZE];
+pthread_mutex_t files_control_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void init_file_control(file_control fc[POOL_SIZE]){
+    for(int i = 0 ; i< POOL_SIZE; i++){
+        fc[i].filename = NULL;
+        fc[i].status   = INIT;
+    }
+}
+void file_control_modify(file_control fc[POOL_SIZE], int status, int thread_id, char* filename){
+    fc[thread_id].filename = filename;
+    fc[thread_id].status = status;
+}
+int file_control_available(file_control fc[POOL_SIZE],char* filename, int status ){
+    for( int i = 0; i < POOL_SIZE; i++){
+        if(fc[i].filename == NULL)continue;
+        if(strcmp(filename,fc[i].filename) == 0){
+            if((status == WRITE) || (status == READ && fc[i].status == WRITE))
+                return i;
+            else 
+                return -1;          
+        }
+    }
+    return -1;
+}
+
+void file_control_exit(int thread_id, int id_opened,int status){
+    pthread_mutex_lock(&files_control_mutex);
+    file_control_modify(files_open,status,thread_id,NULL);
+    pthread_mutex_unlock(&files_control_mutex);
+    if(id_opened == -1){
+        pthread_mutex_unlock(&files_open[thread_id].mutex);
+    }
+    else {
+        pthread_mutex_unlock(&files_open[id_opened].mutex);
+    }
+}
+
+int file_control_synchronize(char* filename,int thread_id,int status){
+    pthread_mutex_lock(&files_control_mutex);
+    int id_opened = file_control_available(files_open,filename,status);
+    if(id_opened == -1){
+        file_control_modify(files_open,status,thread_id,filename);
+        pthread_mutex_unlock(&files_control_mutex);
+        pthread_mutex_lock(&files_open[thread_id].mutex);
+    }
+    else {
+        pthread_mutex_unlock(&files_control_mutex);
+        pthread_mutex_lock(&files_open[id_opened].mutex);
+        pthread_mutex_lock(&files_control_mutex);
+        file_control_modify(files_open,status,thread_id,filename);
+        pthread_mutex_unlock(&files_control_mutex);
+    }
+    return id_opened;
+}
 static int init_tftp_server(int port,int* sockfd) {
     //Create socket with SOCK_DGRAM
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -47,10 +104,6 @@ void* handle_client_requests(void* args){
     return NULL;   
 }
 static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd, int thread_id, int* thread_working){
-   /**
-    *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
-    *   before resending the data packet, assuming that it got lost.
-    */
     *thread_working = READING;
     set_socket_timer(sockfd,status.per_packet_time_out,0);
     u_int8_t timeout = 0;                    //the time out in which we wait for the same ack before quiting the program.
@@ -65,9 +118,10 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     }
     if (requested_file == NULL) {
         send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_addr,sockfd,thread_id);
-        *thread_working = 0;
+        *thread_working = NOTHING;
         return -1;
     }
+    int id_opened = file_control_synchronize(filename,thread_id,READ);
     char data[MAX_BLOCK_SIZE-4];             // The buffer to store file bytes with fread.
     memset(data, 0, sizeof(data));
     size_t bytes_read = 0;      //bytes read from fread
@@ -75,31 +129,34 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
     uint16_t block_number = 1;       //current data block#
 
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
+        printf("files opened %s : %d | %s : %d \n",files_open[0].filename,files_open[0].status,files_open[1].filename,files_open[1].status);
         printf("[packet loss] sending data#%d\n",block_number);
         if(!packet_loss(status.packet_loss_percentage)){
-            if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd,thread_id)){
-                fclose(requested_file);
+            if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd,thread_id)){ 
                 *thread_working = NOTHING;
-                return -1;
-            }
+                fclose(requested_file);
+                file_control_exit(thread_id,id_opened,INIT);
+                return -1; 
+                }
         }
         bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
         while (bytes_received == -1) { 
             //Error recvfrom
             if(errno != EAGAIN && errno != EWOULDBLOCK){
-                perror("[recvfrom]");
-                fclose(requested_file); 
                 *thread_working = NOTHING;
-                return -1;
+                fclose(requested_file);
+                file_control_exit(thread_id,id_opened,INIT);
+                return -1; 
             }
             // Per packet time out reached : Didnt receive ack packet
             // Resend data
             printf("[packet loss] sending data#%d\n",block_number);
-            if(!packet_loss(status.packet_loss_percentage)){
+            if(!packet_loss(status.packet_loss_percentage)){        
                 if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd,thread_id)){
-                    fclose(requested_file);
                     *thread_working = NOTHING;
-                    return -1;
+                    fclose(requested_file);
+                    file_control_exit(thread_id,id_opened,INIT);
+                    return -1; 
                 }
             }
             // Wait for ack again
@@ -108,17 +165,19 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             //Increment the time out for the actual ack packet.
             timeout+=status.per_packet_time_out;
             //Check if we exceeded the time out for the same packet.
-            if(timeout >= status.timemout){
+            if(timeout >= status.timemout){     //ERROR
                 printf("RRQ FAILED : time out reached : %d seconds\n",timeout);
-                fclose(requested_file);
                 *thread_working = NOTHING;
-                return -1;
-            }
+                fclose(requested_file);
+                file_control_exit(thread_id,id_opened,INIT);
+                return -1; 
         }
-        if(check_packet(ack_packet,ACK,status,client_addr,sockfd,thread_id) == -1){
-            fclose(requested_file);
+        }
+        if(check_packet(ack_packet,ACK,status,client_addr,sockfd,thread_id) == -1){     //ERROR
             *thread_working = NOTHING;
-            return -1;
+            fclose(requested_file);
+            file_control_exit(thread_id,id_opened,INIT);
+            return -1; 
         }
         // An ACK packet is received :
         timeout = 0;                //Reset time out , because a new data block is about to be sent
@@ -127,18 +186,16 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
             trace_received(ack_packet,bytes_received,thread_id);
         }
     }
-    fclose(requested_file); 
+    fclose(requested_file);
     printf("RRQ SUCCESS\n");
     *thread_working = NOTHING;
+    file_control_exit(thread_id,id_opened,INIT);
     return 0;
     
 }
 static int process_wrq(config status,char* filename, char* mode, const struct sockaddr_in* client_addr, int sockfd, int thread_id,int* thread_working) {
-    /**
-    *   Make recvfrom non blocking using a time out which the value is the amount of time to wait
-    *   when receiving the same packet before quiting the program.
-    */
-    *thread_working = READING;
+    int id_opened = file_control_synchronize(filename,thread_id,WRITE);
+    *thread_working = WRITING;
     set_socket_timer(sockfd,status.timemout,0);
     char path[100] = SERVER_DIRECTORY;
     strcat(path,filename); 
@@ -152,6 +209,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     if (received_file == NULL) {
         send_error_packet(status,NOT_DEFINED, "Unexpected error while opening file", client_addr, sockfd,thread_id);
         *thread_working = NOTHING;
+        file_control_exit(thread_id,id_opened,INIT);
         return -1;
     }
     uint16_t last_block_number_received = 0; // to keep track of the last block# in case of packet loss.
@@ -162,41 +220,49 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     // Send the ACK0 to the client
     if(send_ack_packet(status,(struct sockaddr*)client_addr,0,sockfd,thread_id) == -1){
         *thread_working = NOTHING;
-        return -1;
+        fclose(received_file);
+        file_control_exit(thread_id,id_opened,INIT);
+        return -1; 
     }
     //WRQ loop
     while (1) { 
+        printf("files opened %s : %d | %s : %d \n",files_open[0].filename,files_open[0].status,files_open[1].filename,files_open[1].status);
         //Receive the data packet , no need to store client address
         bytes_received = recvfrom(sockfd, data_packet, sizeof(data_packet), 0, NULL, 0);
         if(bytes_received == -1){
             //Actual error when using recvfrom
-            if(errno != EAGAIN && errno != EWOULDBLOCK){
+            if(errno != EAGAIN && errno != EWOULDBLOCK){   
                 perror("[recvfrom]");
-                fclose(received_file); 
                 *thread_working = NOTHING;
-                return -1;
+                fclose(received_file);
+                file_control_exit(thread_id,id_opened,INIT);
+                return -1; 
             }
             //Time out occured
             printf("WRQ FAILED : time out reached \n");
-            fclose(received_file);
             *thread_working = NOTHING;
+            fclose(received_file);
+            file_control_exit(thread_id,id_opened,INIT);
             return -1;            
         }
         //Tracing
         if(status.trace){
             trace_received(data_packet,bytes_received,thread_id);
         }
-        if(check_packet(data_packet,DATA,status,client_addr,sockfd,thread_id) == -1){
-            fclose(received_file);
+        if(check_packet(data_packet,DATA,status,client_addr,sockfd,thread_id) == -1){   
             *thread_working = NOTHING;
-            return -1;
+            fclose(received_file);
+            file_control_exit(thread_id,id_opened,INIT);
+            return -1; 
         }
         printf("[packet loss] sending ack#%d\n",get_block_number(data_packet));
         //if there is no packet loss we send the ack.
-        if(!packet_loss(status.packet_loss_percentage)){
+        if(!packet_loss(status.packet_loss_percentage)){    
             if(send_ack_packet(status,(struct sockaddr*)client_addr,get_block_number(data_packet),sockfd,thread_id) == -1){
                 *thread_working = NOTHING;
-                return -1;
+                fclose(received_file);
+                file_control_exit(thread_id,id_opened,INIT);
+                return -1; 
             }
         }
         //write the data if the data packet received is different from the last one
@@ -212,6 +278,7 @@ static int process_wrq(config status,char* filename, char* mode, const struct so
     *thread_working = NOTHING;
     fclose(received_file);
     printf("WRQ SUCCESS\n");
+    file_control_exit(thread_id,id_opened,INIT);
     return 0;
 }
 
@@ -240,6 +307,8 @@ int main(int argc, char**argv)
         pool[i].working = 0;
         }
     int current; // current available thread 
+    init_file_control(files_open);
+    
     while(1){
     if(recvfrom(sockfd,(char* )packet,MAX_BLOCK_SIZE,0,(struct sockaddr *) &client_addr,&len) < 0){
         if(errno != EAGAIN && errno != EWOULDBLOCK){
@@ -261,6 +330,9 @@ int main(int argc, char**argv)
     }
     if(pool[current].working != NOTHING){
         send_error_packet(status,NOT_DEFINED,"No available threads , retry later",&client_addr,sockfd,-1);
+    }
+    else {
+        printf("available thread %d\n",current);
     }
     }
     

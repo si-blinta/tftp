@@ -14,11 +14,37 @@ typedef struct {
     struct sockaddr_in client_addr;
 }thread_context;
 
-enum work_type{
+typedef struct {
+    char* filename;
+    int  status;
+    pthread_mutex_t mutex;
+}file_control;
+
+enum file_satus{
+    READ,
+    WRITE,
+    INIT
+};
+
+enum thread_work_type{
     NOTHING,
     READING,
     WRITING
 };
+
+/**
+ * MULTITHREADING : 
+ * FOR NOW IF I USE GET THEN PUT EVERYTHING IS GUCCI
+ *  BUG : IF I USE PUT THEN GET --------------------------> BUG THE THREADS WAITS FOR THE LOCK THE CLIENT TIME OUTS BUT NOT THE SERVER
+ *  TODO: LOCK MUTEX WITH TIMER TO NOT BLOCK FOREVER , SEND AN ERROR PACKET TO THE CLIENT
+ * 
+ * / 
+
+
+
+
+
+
 
 //-------------------------------------------------------------------------------------
 /**
@@ -68,14 +94,45 @@ static int process_wrq(config status,char* filename,char* mode, const struct soc
 
 //-------------------------------------------------------------------------------------
 /**
- * @brief Sends an error packet to a client.
- * 
- * This function sends an error packet to the client, indicating a problem with the client's request or the server's ability to fulfill it.
- * 
- * @param error_code The TFTP error code to be sent to the client.
- * @param error_msg The error message associated with the error code.
- * @param client_addr Pointer to struct sockaddr_in containing the client's address information.
- * @param sockfd The socket file descriptor for communicating with the client.
+ * @brief Initializes file_control structure.Puts filename to NULL and status to INIT.
+ * @param fc The adress of the structure.
  */
+void init_file_control(file_control fc[POOL_SIZE]);
 
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Update informations for file_control variable.
+ * @param fc The adress of the structure.
+ * @param status The type of operation : READ / WRITE / INIT
+ * @param thread_id The Id of the thread responsable of the operation
+ * @param filename  The filename
+ */
+void file_control_modify(file_control fc[POOL_SIZE], int status, int thread_id, char* filename);
+
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Determins if we can do an operation on a file.
+ * @param fc The structure.
+ * @param filename  The filename to check if its opened.
+ * @param status The type of operation that we want to do : READ / WRITE / INIT
+ * @return the thread_id that opened the file  , -1 if the file is not opened.
+ * 
+ */
+int file_control_available(file_control fc[POOL_SIZE],char* filename, int status );
+
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Determins if we can do an operation on a file.
+ * @param fc The structure.
+ * @param filename  The filename to check if its opened.
+ * @param status The type of operation that we want to do : READ / WRITE / INIT
+ * @return the thread_id that opened the file  , -1 if the file is not opened.
+ * 
+ */
+void file_control_exit(int thread_id,int id_opened, int status );
+
+
+
+
+int file_control_synchronize(char* filename,int thread_id, int status);
 #endif // SERVER_H
