@@ -3,7 +3,7 @@
 #include "utils.h"
 #include <pthread.h>
 #define SERVER_DIRECTORY "../server_directory/"
-#define POOL_SIZE 3
+#define POOL_SIZE 2
 typedef struct {
     int id;
     int working;

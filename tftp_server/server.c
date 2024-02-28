@@ -178,8 +178,9 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
                 return -1; 
                 }
         }
-        bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
-        while (bytes_received == -1) { 
+        while ((bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0)) == -1) { 
+            //Increment the time out for the actual ack packet.
+            timeout+=status.per_packet_time_out;
             //Error recvfrom
             if(errno != EAGAIN && errno != EWOULDBLOCK){
                 *thread_working = THREAD_IDLE;
@@ -187,8 +188,6 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
                 file_control_exit(thread_id,id_opened,FILE_IDLE);
                 return -1; 
             }
-            // Per packet time out reached : Didnt receive ack packet
-            // Resend data
             if(!packet_loss(status.packet_loss_percentage)){        
                 if(send_data_packet(status,block_number,data,client_addr,bytes_read,sockfd,thread_id)){
                     file_control_print();
@@ -198,21 +197,16 @@ static int process_rrq(config status,char* filename,char* mode, const struct soc
                     return -1; 
                 }
             }
-            // Wait for ack again
-            bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, NULL, 0);
-
-            //Increment the time out for the actual ack packet.
-            timeout+=status.per_packet_time_out;
             //Check if we exceeded the time out for the same packet.
-            if(timeout >= status.timemout){     //ERROR
+            if(timeout >= status.timemout){    
                 printf("RRQ FAILED : time out reached : %d seconds\n",timeout);
                 *thread_working = THREAD_IDLE;
                 fclose(requested_file);
                 file_control_exit(thread_id,id_opened,FILE_IDLE);
                 return -1; 
+            }
         }
-        }
-        if(check_packet(ack_packet,ACK,status,client_addr,sockfd,thread_id) == -1){     //ERROR
+        if(check_packet(ack_packet,ACK,status,client_addr,sockfd,thread_id) == -1){    
             *thread_working = THREAD_IDLE;
             fclose(requested_file);
             file_control_exit(thread_id,id_opened,FILE_IDLE);
