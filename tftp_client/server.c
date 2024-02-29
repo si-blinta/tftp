@@ -76,7 +76,7 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
                     client_h[current].block_number = 1;
                     size_t bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h[current].file_fd);
                     client_h[current].number_bytes_operated += bytes_read; 
-                    send_data_packet(status,client_h[current].block_number++,buffer,&client_addr,bytes_read,client_h[current].socket);
+                    send_data_packet(status,client_h[current].block_number,buffer,&client_addr,bytes_read,client_h[current].socket);
                     break;
                 case WRQ:
                     client_h[current].filename = get_file_name(buffer);
@@ -95,24 +95,19 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
         for(int i = 0; i < MAX_CLIENT; i++){
             if(client_h[i].socket != -1){
                 if(FD_ISSET(client_h[i].socket,&clone)){
-                    recvfrom(client_h[i].socket, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
-                    switch (client_h[i].operation)
-                    {
-                        case READ:
-                            size_t bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h[i].file_fd);
-                            client_h[i].number_bytes_operated += bytes_read; 
-                            send_data_packet(status,client_h[i].block_number++,buffer,&client_addr,bytes_read,client_h[i].socket);
-                            if(bytes_read < 512){
-                                fclose(client_h[i].file_fd);
-                                free(client_h[i].filename);
-                                client_handler_init(&client_h[i]);
-                            }
-                            usleep(100000);
-                            break;
-                        
-                        default:
-                            break;
-                    }
+                recvfrom(client_h[i].socket, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
+                switch (client_h[i].operation)
+                {
+                case READ:
+                    fseek(client_h[i].file_fd,client_h[i].number_bytes_operated,SEEK_CUR);
+                    size_t bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h[current].file_fd);
+                    client_h[current].number_bytes_operated += bytes_read; 
+                    send_data_packet(status,client_h[current].block_number++,buffer,&client_addr,bytes_read,client_h[current].socket);
+                    break;
+                
+                default:
+                    break;
+                }
 
                 }
             }

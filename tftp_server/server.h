@@ -2,6 +2,22 @@
 #define SERVER_H
 #include "utils.h"
 #define SERVER_DIRECTORY "../server_directory/"
+#define MAX_CLIENT 2
+
+typedef struct {
+    FILE* file_fd;
+    int socket;
+    uint16_t block_number;
+    char* filename;
+    size_t number_bytes_operated;
+    int operation;
+}client_handler;
+
+enum operation{
+    READ,
+    WRITE,
+    NONE
+};
 
 //-------------------------------------------------------------------------------------
 /**
@@ -20,9 +36,9 @@ static int init_tftp_server(int port,int* sockfd);
  * 
  * This function listens for and processes incoming client requests, including read requests (RRQ) and write requests (WRQ).
  * 
- * @param sockfd The socket file descriptor used to listen for incoming requests.
+ * @param main_socket_fd The socket file descriptor used to listen for incoming requests.
  */
-static int handle_client_requests(config status,int sockfd);
+static int handle_client_requests(config status,int main_socket_fd);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -51,14 +67,9 @@ static int process_wrq(config status,char* filename,char* mode, const struct soc
 
 //-------------------------------------------------------------------------------------
 /**
- * @brief Sends an error packet to a client.
- * 
- * This function sends an error packet to the client, indicating a problem with the client's request or the server's ability to fulfill it.
- * 
- * @param error_code The TFTP error code to be sent to the client.
- * @param error_msg The error message associated with the error code.
- * @param client_addr Pointer to struct sockaddr_in containing the client's address information.
- * @param sockfd The socket file descriptor for communicating with the client.
+ * @brief Initialize client_handler structure.
+ * @param client_h The pointer to the structure;
  */
+void client_handler_init(client_handler* client_h);
 
 #endif // SERVER_H
