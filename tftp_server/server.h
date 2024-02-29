@@ -9,7 +9,7 @@ typedef struct {
     int socket;
     uint16_t block_number;
     char* filename;
-    size_t number_bytes_operated;
+    size_t number_bytes_operated;   // not used for now since we don't close the file 
     int operation;
 }client_handler;
 

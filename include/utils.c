@@ -267,7 +267,7 @@ int check_packet(char* packet, int type,config status,const struct sockaddr_in* 
             // if its other type
             else {
                 send_error_packet(status,NOT_DEFINED,"Unexpected packet",addr,sockfd);
-                printf("[put] : Unexpected packet\n");
+                printf("[put] : Unexpected packet :\n");
                 return -1;
             }
         }
