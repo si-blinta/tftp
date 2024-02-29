@@ -42,31 +42,6 @@ static int handle_client_requests(config status,int main_socket_fd);
 
 //-------------------------------------------------------------------------------------
 /**
- * @brief Processes a read request from a client.
- * 
- * This function handles a client's read request (RRQ) by sending the requested file to the client.
- * 
- * @param filename The name of the file requested by the client.
- * @param client_addr Pointer to struct sockaddr_in containing the client's address information.
- * @param sockfd The socket file descriptor for communicating with the client.
- * @return Returns 0 on success, -1 on failure.
- */
-static int process_rrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
-//-------------------------------------------------------------------------------------
-/**
- * @brief Processes a write request from a client.
- * 
- * This function handles a client's write request (WRQ) by receiving a file from the client and saving it to the server.
- * 
- * @param filename The name of the file to be received from the client.
- * @param client_addr Pointer to struct sockaddr_in containing the client's address information.
- * @param sockfd The socket file descriptor for communicating with the client.
- * @return Returns 0 on success, -1 on failure.
- */
-static int process_wrq(config status,char* filename,char* mode, const struct sockaddr_in* client_addr, int sockfd);
-
-//-------------------------------------------------------------------------------------
-/**
  * @brief Initialize client_handler structure.
  * @param client_h The pointer to the structure;
  */
