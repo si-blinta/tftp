@@ -19,10 +19,6 @@ enum operation{
     NONE
 };
 
-typedef struct {    //todo
-    char* filename;
-    int  status;
-}file_control;
 //-------------------------------------------------------------------------------------
 /**
  * @brief Initializes a UDP server socket.
