@@ -1,90 +1,36 @@
-# TFTP ETAPE 1 ET 2 
+# TFTP MULTITHREADED VERSION
 
 ### Simple TFTP Server program
 ### Simple TFTP Client program
 ### A Server Directory : server_directory containing :
                                                       -ai.png
-                                                      -test.txt
 Every file is requested/sent from/to server_directory ! 
-## NOTE 1 
-We respected the tftp RFC, it means that the transfer does not have any security.
-If you want us to implement something more secure, you are welcome.
 
 ## Compilation
 
-Makefile for server and Makefile for client.
-
-tftp/tftp_client/make
-
-tftp/tftp_server/make
-
+./build.sh
+it will compile and also creates directories for clients to simulate a multiuser scenario.
 
 ## Launching
 
 you will need to be in tftp_server folder :
 
-./server [port] [packet loss percentage]
+./server [port] [packet loss percentage]  ( i suggest to put packet loss at 10 )
 
-you will need to be in tftp_client folder :
+you will need to be in client-x folder : (x number of the client)
 
-./client [server ip] [server port] [packet loss percentage]
+./client-x [server ip] [server port]
 
-for example to connect to the real TFTP server installed on local machine :
-./client 127.0.0.1 69 0
+## HOW
 
-## NOTE 2
-in this implementation, even if you choose packet loss percentage to be 0 : 
+Our multithreaded server is using a pool of threads, if a user wants to write / read
+and all threads are busy , he will receive a NOT DEFINED ERROR saying that no thread is available.
 
-[packet loss] sending data#1
+We respected the Writers / Readers problem.
 
-this line is always printed when a packet is sent , but it may be lost.
+## Debugging
 
-
-sent DATA <block=1, 516 bytes>
-
-this line means that the data is actually sent.(no packet loss)
-
-## TFTP Client
-#### HELP , help command.
-
-<tftp>?
-Commands available:
-  put     	Send file to the server
-  get     	Receive file from the server
-  status  	Show current status
-  trace   	Toggle packet tracing
-  quit    	Exit TFTP client
-  ?       	Print this help information
-<tftp>
-
-
-#### RRQ , type get then enter then filename. this will get the file from server_directory to current directory.
-
-<tftp>get
-<tftp>(file) filename
-
-#### WRQ , type put then enter then filename. this will put the file from current directory to server_directory.
-
-<tftp>put
-<tftp>(file) filename
-
-#### STATUS , this command shows the current configuration of the TFTP client.
-
-<tftp>status
-Connected to 127.0.0.1
-Mode : octet
-Tracing : Off
-per Packet timeout : 1 seconds
-Timeout : 10 seconds
-<tftp>
-
-#### TRACE , this command allows to trace every packet sent or received.
-
-<tftp>status
-Packet tracing on
-<tftp>
-
-#### QUIT , this command allows you to quit properly the TFTP client.
-
-<tftp>quit
-Exiting TFTP client.
+In the server program : We print each packet received / sent by which thread and also which file is open , for which operation.
+In the client program : We still use the tracing : dont forget to activate it by typing "trace".
+In build.sh           : We create POOL_SIZE +1 directories (clients) so you can test if number_clients > POOL_SIZE.
+Feel free to modify POOL_SIZE in server.h
