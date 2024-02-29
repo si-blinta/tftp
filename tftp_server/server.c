@@ -52,7 +52,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->block_number = 1;
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);
         client_h->number_bytes_operated += bytes_read; 
-        send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket);
+        if(send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1;
         return 0;
         // We don't close the file , IO operations are very slow
     }
@@ -60,12 +60,13 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_read;                            // maybe useful for further improvements
         if(bytes_read <= 0){   // If we cant read
+            printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated); //ADDED
             fclose(client_h->file_fd);
             free(client_h->filename);
             client_handler_init(client_h);
             return 0;
         }
-        send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket);  
+        if(send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1;  
         usleep(10000);        // for debug purposes
         return 0;
     }
@@ -81,22 +82,24 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->file_fd = requested_file;
         client_h->operation = WRITE;
         client_h->block_number = 0; // Respecting TFTP protocol , ack 0 
-        send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket);
+        if(send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket) == -1)return -1;
         return 0;
     }
     else {
         size_t bytes_written = fwrite(get_data(buffer),1,bytes_received-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_written;                            // maybe useful for further improvements
-        send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket);
+        if(send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket) == -1 )return -1;
         if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available 
+            printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
             free(client_h->filename);
             client_handler_init(client_h);
             return 0 ;
         }
-        usleep(10000);        // for debug purposes
+        usleep(10000);        // for debug purposes   
         return 0;
     }
+    
 }
 
 
@@ -153,7 +156,7 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
                 memset(buffer,0,MAX_BLOCK_SIZE);
                 if(FD_ISSET(client_h[i].socket,&clone)){    // Check if there is someting to read
                     bytes_received = recvfrom(client_h[i].socket, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
-                    
+                               
                     switch (client_h[i].operation)  // depending on operation of the client handler
                     {
                         case READ:
@@ -170,13 +173,12 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
             }
         }
     }
-return 0;  
+    return 0;  
 }
 
 
 int main(int argc, char**argv)
 {   
-    srand(time(NULL));
     if(argc < 2){
         printf("USAGE ./server [port]\n");
         return 0;
