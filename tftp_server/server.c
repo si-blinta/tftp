@@ -157,8 +157,8 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
         }
         for(int i = 0; i < MAX_CLIENT; i++){    // For every client handler socket
             if(client_h[i].socket != -1){       // If its an active client handler
-                memset(buffer,0,MAX_BLOCK_SIZE);
                 if(FD_ISSET(client_h[i].socket,&clone)){    // Check if there is someting to read
+                    memset(buffer,0,MAX_BLOCK_SIZE);
                     bytes_received = recvfrom(client_h[i].socket, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
                                
                     switch (client_h[i].operation)  // depending on operation of the client handler
