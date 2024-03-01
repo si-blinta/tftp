@@ -25,6 +25,7 @@ void client_handler_init(client_handler* client_h){
     client_h->number_bytes_operated = 0;
     client_h->operation = NONE;
     client_h->socket    = -1;
+    memset(client_h->last_block,0,MAX_BLOCK_SIZE);
 }
 int client_handler_available(client_handler client_h[MAX_CLIENT]){
    for(int i = 0 ; i < MAX_CLIENT; i++){
@@ -53,6 +54,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);
         client_h->number_bytes_operated += bytes_read; 
         if(send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1;
+        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         return 0;
         // We don't close the file , IO operations are very slow
     }
@@ -60,13 +62,14 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_read;                            // maybe useful for further improvements
         if(bytes_read <= 0){   // If we cant read
-            printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated); //ADDED
+            printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
             free(client_h->filename);
             client_handler_init(client_h);
             return 0;
         }
         if(send_data_packet(status,client_h->block_number++,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1;  
+        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         usleep(10000);        // for debug purposes
         return 0;
     }
@@ -87,6 +90,7 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
     }
     else {
         size_t bytes_written = fwrite(get_data(buffer),1,bytes_received-4, client_h->file_fd);  // no need to use fseek because we dont close file
+        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         client_h->number_bytes_operated += bytes_written;                            // maybe useful for further improvements
         if(send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket) == -1 )return -1;
         if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available 

@@ -9,8 +9,9 @@ typedef struct {
     int socket;
     uint16_t block_number;
     char* filename;
-    size_t number_bytes_operated;   // not used for now since we don't close the file 
+    size_t number_bytes_operated;   // Only used for debug now since we don't close the file
     int operation;
+    char last_block[MAX_BLOCK_SIZE];
 }client_handler;
 
 enum operation{
@@ -46,5 +47,6 @@ static int handle_client_requests(config status,int main_socket_fd);
  * @param client_h The pointer to the structure;
  */
 void client_handler_init(client_handler* client_h);
+
 
 #endif // SERVER_H
