@@ -47,6 +47,26 @@ int client_handler_file_available(client_handler client_h[MAX_CLIENT],char* file
     }
     return -1;
 }
+void client_handler_print(client_handler client_h[MAX_CLIENT]) {
+    for (int i = 0; i < MAX_CLIENT; i++) {
+        const char* status_string;
+        switch (client_h[i].operation) {
+            case READ:
+                status_string = "READ";
+                break;
+            case WRITE:
+                status_string = "WRITE";
+                break;
+            case NONE:
+                status_string = "NONE";
+                break;
+            default:
+                break;
+        }
+        printf("#%d|%s = %s | ", i,client_h[i].filename,status_string);
+    }
+    printf("\n");
+}
 
 int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h, int client_handler_id) {
     char buffer[MAX_BLOCK_SIZE];
@@ -152,6 +172,7 @@ static int handle_client_requests(config status,int main_socket_fd){
     size_t bytes_received = 0;
     
     while(1){
+        client_handler_print(client_h);
         clone = master;                             // work on a copy because select is destructive
         timer.tv_sec = status.per_packet_time_out;  // reseting the timer because select is destructive
         timer.tv_usec = 0;

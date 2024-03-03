@@ -106,5 +106,11 @@ int client_handler_available(client_handler client_h[MAX_CLIENT]);
  * @return -1 if we can access it , other if we cant.
 */
 int client_handler_file_available(client_handler client_h[MAX_CLIENT],char* filename, int operation);
+/**
+ * @brief Prints client handlers status.
+ * @param client_h Client handler array.
+*/
+
+void client_handler_print(client_handler client_h[MAX_CLIENT]) ;
 
 #endif // SERVER_H

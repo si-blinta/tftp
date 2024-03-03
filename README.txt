@@ -35,8 +35,8 @@ We send an ACCESS_VIOLATION error if we encounter writers / readers problem.
 
 In the server program : We print each packet received / sent by which client_handler and also which file is open , for which operation.
 In the client program : We still use the tracing : dont forget to activate it by typing "trace".
-In build.sh           : We create POOL_SIZE +1 directories (clients) so you can test if number_clients > POOL_SIZE.
-Feel free to modify POOL_SIZE in server.h
+In build.sh           : We create MAX_CLIENT +1 directories (clients) so you can test if number_clients > MAX_CLIENT.
+Feel free to modify MAX_CLIENT in server.h
 
 ## Note
 
