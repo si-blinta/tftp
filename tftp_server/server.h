@@ -105,12 +105,18 @@ int client_handler_available(client_handler client_h[MAX_CLIENT]);
  * @param operation The type of operation we want to do on the file.
  * @return -1 if we can access it , other if we cant.
 */
+//------------------------------------------------------------------------------------------
 int client_handler_file_available(client_handler client_h[MAX_CLIENT],char* filename, int operation);
 /**
  * @brief Prints client handlers status.
  * @param client_h Client handler array.
 */
-
 void client_handler_print(client_handler client_h[MAX_CLIENT]) ;
-
+//--------------------------------------------------------------------------------
+/**
+ * @brief checks if there is at least one active client handler
+ * @param client_h An array of client handlers
+ * @return 0 if there is no active handlers , 1 if at least one is present
+*/
+int client_handler_one_is_active(client_handler client_h[MAX_CLIENT]);
 #endif // SERVER_H

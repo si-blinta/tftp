@@ -67,6 +67,12 @@ void client_handler_print(client_handler client_h[MAX_CLIENT]) {
     }
     printf("\n");
 }
+int client_handler_one_is_active(client_handler client_h[MAX_CLIENT]){
+    for(int i = 0;i<MAX_CLIENT;i++){
+        if(client_h[i].operation != NONE)return 1;
+    }
+    return 0;
+}
 
 int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h, int client_handler_id) {
     char buffer[MAX_BLOCK_SIZE];
@@ -156,6 +162,7 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
 
 
 static int handle_client_requests(config status,int main_socket_fd){
+    int max_socket_value = main_socket_fd;  // improve performance instead of using FD_SETSIZE
     fd_set master,clone;
     struct timeval timer;
     client_handler client_h[MAX_CLIENT];
@@ -170,15 +177,23 @@ static int handle_client_requests(config status,int main_socket_fd){
     socklen_t len = sizeof(client_addr);
     int current = 0;        // current client_handler
     size_t bytes_received = 0;
-    
     while(1){
-        client_handler_print(client_h);
         clone = master;                             // work on a copy because select is destructive
-        timer.tv_sec = status.per_packet_time_out;  // reseting the timer because select is destructive
+        timer.tv_sec = status.per_packet_time_out;  
         timer.tv_usec = 0;
-        if(select(FD_SETSIZE,&clone,NULL,NULL,&timer) == -1){
-            perror("[handle_client_requests][select]");
-            exit(EXIT_FAILURE);
+        client_handler_print(client_h);
+        if(client_handler_one_is_active(client_h) == 1){    // if at least one client handler is active then use time out
+            if(select(max_socket_value+1,&clone,NULL,NULL,&timer) == -1){   
+                perror("[handle_client_requests][select]");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else {
+            printf("Waiting for connexions (select is blocking)\n");
+            if(select(max_socket_value+1,&clone,NULL,NULL,NULL) == -1){   // if no client handler is active make select blocking to improve performance
+                perror("[handle_client_requests][select]");
+                exit(EXIT_FAILURE);
+            }
         }
         if(FD_ISSET(main_socket_fd,&clone)){        // if its a RRQ / WRQ since its sent to the port 8080 in our case
             bytes_received = recvfrom(main_socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
@@ -200,6 +215,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                         client_h[current].client_addr = malloc(sizeof(client_addr));// add client_addr TO FREE
                         memcpy(client_h[current].client_addr,&client_addr,len);
                         FD_SET(client_h[current].socket,&master);                // add it to the set
+                        if(client_h[current].socket > max_socket_value)
+                            max_socket_value = client_h[current].socket ;
                         handle_rrq(status,filename,main_socket_fd,&client_h[current],current); 
                         time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
                     }
@@ -214,6 +231,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                         client_h[current].client_addr = malloc(sizeof(client_addr));    // add client_addr  TO FREE
                         memcpy(client_h[current].client_addr,&client_addr,len);
                         FD_SET(client_h[current].socket,&master);                // add it to the set
+                        if(client_h[current].socket > max_socket_value)
+                            max_socket_value = client_h[current].socket ;
                         handle_wrq(status,filename,main_socket_fd,&client_h[current],bytes_received,buffer,current);
                         time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
                     }

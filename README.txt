@@ -25,7 +25,8 @@ you will need to be in client-x folder : ( x number of the client )
 ## HOW
 
 Our monothreaded server is using a pool of client handlers, if a user wants to write / read
-and all the handlers are busy , he will receive a NOT DEFINED ERROR saying that no thread is available.
+First we check if we have active handlers , if so we put a timer in select , else we make select blocking to improve cpu usage.
+If we get a request and all the handlers are busy , he will receive a NOT DEFINED ERROR saying that no thread is available.
 
 We respected the Writers / Readers problem : 
 We send an ACCESS_VIOLATION error if we encounter writers / readers problem.
@@ -42,6 +43,8 @@ Feel free to modify MAX_CLIENT in server.h
 
 In client side : 
     Even if the file doesn't exist in the server directory and we do a get request we create it. ( we dont delete the file on failure )
+        -Since TFTP doesnt precise the fact that we can send an empty file , we treated like a normal file. 
+        ( if u send an empty file = you override it in server directory).
 In server side :
     Even if it the server thread time outs , it prints RRQ/WRQ FAILED time out reached ... , it means that the thread didnt receive the last ack.
     Which can happen if the last ack is lost but the client received the whole file.
