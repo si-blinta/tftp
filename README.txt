@@ -3,7 +3,8 @@
 ### Mono threaded TFTP Server program using Select
 ### Simple TFTP Client program
 ### A Server Directory : server_directory containing :
-                                                      -ai.png
+                                                    -ai.png
+                                                    -test.txt
 Every file is requested/sent from/to server_directory ! 
 
 ## Compilation
@@ -15,11 +16,11 @@ it will compile and also creates directories for clients to simulate a multiuser
 
 you will need to be in tftp_server folder :
 
-./server [port] [packet loss percentage]  ( we suggest to put packet loss at 10 )
+./server [port] [packet loss percentage]  ( we suggest to put packet loss < 10 )
 
 you will need to be in client-x folder : ( x number of the client )
 
-./client-x [server ip] [server port] [packet loss percentage] ( we suggest to put packet loss at 10 )
+./client-x [server ip] [server port] [packet loss percentage] ( we suggest to put packet loss < 10 )
 
 ## HOW
 
@@ -28,7 +29,7 @@ and all the handlers are busy , he will receive a NOT DEFINED ERROR saying that 
 
 We respected the Writers / Readers problem : 
 We send an ACCESS_VIOLATION error if we encounter writers / readers problem.
-(could have implemented some time out solution , but no time to do it )
+(could have implemented some time out solution like in the multithreaded server, but no time to do it )
 
 ## Debugging
 
