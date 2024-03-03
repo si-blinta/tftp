@@ -3,7 +3,6 @@ int packet_loss(uint8_t loss_percentage) {
     int rand_val = rand() % 100;
     return rand_val < loss_percentage;
 }
-
 static int init_tftp_server(int port,int* sockfd) {
     //Create socket with SOCK_DGRAM
     if ((*sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -38,6 +37,19 @@ int client_handler_available(client_handler client_h[MAX_CLIENT]){
    }
    return -1; 
 }
+int client_handler_file_available(client_handler client_h[MAX_CLIENT],char* filename, int operation){
+    for( int i = 0; i < MAX_CLIENT; i++){
+        if(client_h[i].filename == NULL)continue;
+        if(strcmp(filename,client_h[i].filename) == 0){
+            if((operation == WRITE) || (operation == READ && client_h[i].operation == WRITE))
+                return i;
+            else 
+                return -1;          
+        }
+    }
+    return -1;
+}
+
 int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h) {
     char buffer[MAX_BLOCK_SIZE];
     size_t bytes_read;
@@ -132,7 +144,6 @@ static int handle_client_requests(config status,int main_socket_fd){
     
     char buffer[MAX_BLOCK_SIZE];
     char* filename = NULL;
-    char path[100] ;
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
     int current = 0;        // current client_handler
@@ -154,23 +165,36 @@ static int handle_client_requests(config status,int main_socket_fd){
             }
             current = client_handler_available(client_h);   // check if we have available client_handlers, we made the choice to limit the ressources (pool)
             if( current != -1){
-                //If we have available ressources
+                //If we have available ressources (client handler)
                 filename = get_file_name(buffer); // TO FREE
-                strcpy(path,SERVER_DIRECTORY);
-                strcat(path,filename);
-                client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket
-                client_h[current].client_addr = client_addr;             // add client_addr 
-                FD_SET(client_h[current].socket,&master);                // add it to the set
                 int opcode = get_opcode(buffer);                         // check request type
                 switch (opcode)
                 {
                 case RRQ:
-                    handle_rrq(status,filename,main_socket_fd,&client_h[current]); 
-                    time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
+                    //Check if we can access the file (writers / readers problem)
+                    if(client_handler_file_available(client_h,filename,READ) == -1){
+                        client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket
+                        client_h[current].client_addr = client_addr;             // add client_addr 
+                        FD_SET(client_h[current].socket,&master);                // add it to the set
+                        handle_rrq(status,filename,main_socket_fd,&client_h[current]); 
+                        time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
+                    }
+                    else { // if we can not access the file 
+                           // with our implementation we can't wait , ( if we had more time we could have figured it out ), so just send an error instead
+                        send_error_packet(status,ACCESS_VIOLATION,"Can not access the file, a user is modifying it",&client_addr,main_socket_fd);
+                    }
                     break;
                 case WRQ:
-                    handle_wrq(status,filename,main_socket_fd,&client_h[current],bytes_received,buffer);
-                    time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
+                    if(client_handler_file_available(client_h,filename,WRITE) == -1){
+                        client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket
+                        client_h[current].client_addr = client_addr;             // add client_addr 
+                        FD_SET(client_h[current].socket,&master);                // add it to the set
+                        handle_wrq(status,filename,main_socket_fd,&client_h[current],bytes_received,buffer);
+                        time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
+                    }
+                    else {
+                        send_error_packet(status,ACCESS_VIOLATION,"Can not access the file, a user is modifying it",&client_addr,main_socket_fd);
+                    }   
                     break;
                 default:
                     break;
