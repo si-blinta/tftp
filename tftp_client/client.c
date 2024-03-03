@@ -189,6 +189,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     }
     if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
         fclose(requested_file);
+        return -1;
        
     }
     //change recvfrom timer 
