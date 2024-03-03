@@ -1,6 +1,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 #include "utils.h"
+#include <sys/select.h>
 #define SERVER_DIRECTORY "../server_directory/"
 #define MAX_CLIENT 2
 
@@ -37,13 +38,51 @@ static int init_tftp_server(int port,int* sockfd);
 
 //-------------------------------------------------------------------------------------
 /**
- * @brief Handles incoming client requests.
+* @brief Handles RRQ, it can be called in two cases :
+ *                      -First call, needs filename to open the file and send the first data packet, also handles error of opening a file.
+ *                      -Follow up call, sends the right data packet, checks for terminaison.( we don't open the file )
  * 
- * This function listens for and processes incoming client requests, including read requests (RRQ) and write requests (WRQ).
- * 
- * @param main_socket_fd The socket file descriptor used to listen for incoming requests.
+ * @param status Config of the server .
+ * @param filename The filename requested.
+ * @param main_socket_fd The server socket , we need it for first call to send an error if we can't open a file.
+ * @param client_h   The adress to client handler structure.
+ * @param client_handler_id The index of the client handler in , client_h array.
  */
 static int handle_client_requests(config status,int main_socket_fd);
+
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Handles WRQ, it can be called in two cases :
+ *                      -First call, needs filename to open the file and send the first ack packet, also handles error of opening a file.
+ *                      -Follow up call, sends the ack packet, writes data , checks for terminaison.( we don't open the file )
+ *                          ,updates client handler ( updates time_stamp , last block ....)
+ * 
+ * @param status Config of the server .
+ * @param filename The filename requested.
+ * @param main_socket_fd The server socket , we need it for first call to send an error if we can't open a file.
+ * @param client_h   The adress to client handler structure.
+ * @param bytes_received The bytes received from the recvfrom call.
+ * @param buffer         The buffer used in recvfrom. ( buffer storing data packet )
+ * @param client_handler_id The index of the client handler in , client_h array.
+ * @return 0 on success , -1 on error.
+ */
+int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char buffer[MAX_BLOCK_SIZE],int client_handler_id);
+
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Handles RRQ, it can be called in two cases :
+ *                      -First call, needs filename to open the file and send the first data packet, also handles error of opening a file.
+ *                      -Follow up call, sends the right data packet, checks for terminaison.( we don't open the file )
+ *                          ,updates client handler ( updates time_stamp , last block ....)
+ * 
+ * @param status Config of the server .
+ * @param filename The name of the file requested.
+ * @param main_socket_fd The server socket , we need it for first call to send an error if we can't open a file.
+ * @param client_h   The adress to client handler structure.
+ * @param client_handler_id The index of the client handler in , client_h array.
+ * @return 0 on success , -1 on error.
+ */
+int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h, int client_handler_id);
 
 //-------------------------------------------------------------------------------------
 /**
@@ -51,6 +90,21 @@ static int handle_client_requests(config status,int main_socket_fd);
  * @param client_h The pointer to the structure;
  */
 void client_handler_init(client_handler* client_h);
-
+//-------------------------------------------------------------------------------------
+/**
+ * @brief Checks for available ressources in client_handler array.
+ * @param client_h Client handler array to check in .
+ * @return index available, -1 if no ressource is available.
+*/
+int client_handler_available(client_handler client_h[MAX_CLIENT]);
+//----------------------------------------------------------------------------------------
+/**
+ * @brief Checks if a file is available according to WRITERS / READERS problem.
+ * @param client_h Client handler array to check in.
+ * @param filename The name of the file that we want to manipulate.
+ * @param operation The type of operation we want to do on the file.
+ * @return -1 if we can access it , other if we cant.
+*/
+int client_handler_file_available(client_handler client_h[MAX_CLIENT],char* filename, int operation);
 
 #endif // SERVER_H
