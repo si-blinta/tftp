@@ -242,7 +242,7 @@ static int handle_client_requests(config status,int main_socket_fd){
                         printf("RRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
                         fclose(client_h[i].file_fd);
                         free(client_h[i].filename);
-                        free(client_h->client_addr);
+                        free(client_h[i].client_addr);
                         client_handler_init(&client_h[i]);  
                     }
                     else if(time_passed >= status.per_packet_time_out){  // check if a second has passed between last time_stamp and now , if so resend the last packet
@@ -260,7 +260,7 @@ static int handle_client_requests(config status,int main_socket_fd){
                         printf("WRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
                         fclose(client_h[i].file_fd);
                         free(client_h[i].filename);
-                        free(client_h->client_addr);
+                        free(client_h[i].client_addr);
                         client_handler_init(&client_h[i]);
                     }
                     // We don't resend the ack
