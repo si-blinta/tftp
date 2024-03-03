@@ -20,6 +20,7 @@ typedef struct {
     uint8_t trace;                // tracing packets : for debugging 
     uint8_t per_packet_time_out ; // per-packet retransmission timeout
     uint8_t timemout;             // total retransmission timeout for a single packet.
+    uint8_t packet_loss_percentage;
 }config;
 
 
@@ -225,9 +226,10 @@ char* build_data_packet(uint16_t block_number, const char* data, size_t data_len
  * @param client_addr The address of the server to which the acknowledgement is sent.
  * @param block_number The block # to acknowledge.
  * @param sockfd The socket file descriptor used to send the packet.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd);
+int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t block_number, int sockfd,int client_handler_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -236,9 +238,10 @@ int send_ack_packet(config status,const struct sockaddr* client_addr, uint16_t b
  * @param dest_addr The address of the server to which the error is sent.
  * @param block_number The block # to acknowledge.
  * @param sockfd The socket file descriptor used to send the packet.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd);
+int send_error_packet(config status,uint8_t error_code,char* error_msg, const struct sockaddr_in* client_addr, int sockfd,int client_handler_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -249,9 +252,10 @@ int send_error_packet(config status,uint8_t error_code,char* error_msg, const st
  * @param client_addr The address of the server to which the data is sent.
  * @param data_length the size of the data.
  * @param sockfd The socket file descriptor used to send the packet.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return Returns 0 on success, -1 on failure with an error message printed to stderr.
  */
-int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd);
+int send_data_packet(config status,uint16_t block_number,char* data, const struct sockaddr_in* client_addr,uint16_t data_length, int sockfd,int client_handler_id);
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -267,18 +271,20 @@ void print_error_message(char* error_packet);
  * @brief Prints informations sent.
  * @param packet The error packet.
  * @param packet_size The size of the packet.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return Nothing
  */
-void trace_sent(char* packet,size_t packet_size);
+void trace_sent(char* packet,size_t packet_size,int client_handler_id);
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
  * @brief Prints informations received.
  * @param packet The error packet.
  * @param packet_size The size of the packet.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return Nothing
  */
-void trace_received(char* packet,size_t packet_size);
+void trace_received(char* packet,size_t packet_size,int client_handler_id);
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------------
 /**
@@ -298,9 +304,18 @@ int set_socket_timer(uint8_t sockfd,uint8_t time_sec, uint8_t time_usec);
  * @param status The config
  * @param addr The adress to send information on error.
  * @param sockfd The socket file descriptor.
+ * @param client_handler_id The client handler id, -1 if used in client side.
  * @return 0 on success and -1 on error
 */
-int check_packet(char* packet, int type, config status, const struct sockaddr_in* addr,int sockfd);
+int check_packet(char* packet, int type, config status, const struct sockaddr_in* addr,int sockfd,int client_handler_id);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Simulates packet loss chance.
+ * @param loss_percentage The percentage of packet loss occuring.
+ * @return 1 if no packet loss and 0 if we have a packet loss
+ */
+int packet_loss(uint8_t loss_percentage);
 
 
 

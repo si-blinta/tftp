@@ -30,6 +30,7 @@ int request(uint16_t opcode,const char* filename, config status, int sockfd, str
  */
 //
 static int connect_to_tftp_server(int per_packet_timeout,const char* server_ip, int client_port,struct sockaddr_in* server_addr,int* sockfd);
+
 //----------------------------------------------------------------------------------------------
 /**
  * @brief Sets the file transfer mode.
@@ -38,7 +39,7 @@ static int connect_to_tftp_server(int per_packet_timeout,const char* server_ip, 
  * 
  * @param mode The desired file transfer mode (e.g., "binary" or "ascii").
  */
-static void set_file_transfer_mode(const char* mode,char* transfer_mode);
+//static void set_file_transfer_mode(const char* mode,char* transfer_mode);
 
 //----------------------------------------------------------------------------------------------
 /**
@@ -121,7 +122,7 @@ void set_total_retransmission_timeout(int timeout);
  * @param addr The server socket address.
  * @param sockfd The file descriptor of the socket.
  */
-static int process_command(char* command,config* status,struct sockaddr_in server_addr,int sockfd);
+static void process_command(char* command,config* status,struct sockaddr_in server_addr,int sockfd);
 
 //----------------------------------------------------------------------------------------------
 /**
