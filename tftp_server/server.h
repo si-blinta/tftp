@@ -7,11 +7,14 @@
 typedef struct {
     FILE* file_fd;
     int socket;
+    struct sockaddr_in client_addr;
     uint16_t block_number;
     char* filename;
     size_t number_bytes_operated;   // Only used for debug now since we don't close the file
     int operation;
     char last_block[MAX_BLOCK_SIZE];
+    size_t last_block_size;
+    time_t last_time_stamp;
 }client_handler;
 
 enum operation{
