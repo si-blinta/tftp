@@ -65,6 +65,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         // We don't close the file , IO operations are very slow
     }
     else {
+        client_h->timeout = 0;    // reset timer on success (received an ack for last packed sent)
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_read;                            // maybe useful for further improvements
         if(bytes_read <= 0){   // If we cant read
@@ -74,7 +75,6 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
             client_handler_init(client_h);
             return 0;
         }
-        //printf("handle rrq packet loss\n");
         if(!packet_loss(10)){
             if(send_data_packet(status,client_h->block_number+1,buffer,&client_h->client_addr,bytes_read,client_h->socket) == -1 )return -1; 
         }
@@ -95,29 +95,33 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->file_fd = requested_file;
         client_h->operation = WRITE;
         client_h->block_number = 0; // Respecting TFTP protocol , ack 0 
-        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number++,client_h->socket) == -1)return -1;
+        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number,client_h->socket) == -1)return -1;
         return 0;
     }
     else {
-        size_t bytes_written = fwrite(get_data(buffer),1,bytes_received-4, client_h->file_fd);  // no need to use fseek because we dont close file
-        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
-        client_h->number_bytes_operated += bytes_written;                            // maybe useful for further improvements
-        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number++,client_h->socket) == -1 )return -1;
-        if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available 
+        client_h->timeout = 0;  // reset timer because we received a packet
+        //Check if its a different block from last one
+        if(client_h->block_number != get_block_number(buffer)){
+            client_h->block_number = get_block_number(buffer);
+            size_t bytes_written = fwrite(get_data(buffer),1,bytes_received-4, client_h->file_fd);  // no need to use fseek because we dont close file
+            memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
+            client_h->number_bytes_operated += bytes_written;   // maybe useful for further improvements
+        }
+        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number,client_h->socket) == -1 )return -1; // send ack
+        if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available for other clients
             printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
             free(client_h->filename);
             client_handler_init(client_h);
             return 0 ;
         }
-        usleep(10000);        // for debug purposes   
         return 0;
     }
     
 }
 
 
-static int handle_client_requests(config status,int main_socket_fd){    //TODO error checking
+static int handle_client_requests(config status,int main_socket_fd){
     fd_set master,clone;
     struct timeval timer;
     client_handler client_h[MAX_CLIENT];
@@ -135,31 +139,38 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
     size_t bytes_received = 0;
     
     while(1){
-        clone = master;             // work on a copy because select is destructive
-        timer.tv_sec = 1;
+        clone = master;                             // work on a copy because select is destructive
+        timer.tv_sec = status.per_packet_time_out;  // reseting the timer because select is destructive
         timer.tv_usec = 0;
-        int select_result = select(FD_SETSIZE,&clone,NULL,NULL,&timer);
+        if(select(FD_SETSIZE,&clone,NULL,NULL,&timer) == -1){
+            perror("[handle_client_requests][select]");
+            exit(EXIT_FAILURE);
+        }
         if(FD_ISSET(main_socket_fd,&clone)){        // if its a RRQ / WRQ since its sent to the port 8080 in our case
-            current = client_handler_available(client_h);
             bytes_received = recvfrom(main_socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
+            if(bytes_received == -1){ // handle recvfrom errors
+                perror("[handle_client_requests][recvfrom]");
+                exit(EXIT_FAILURE);
+            }
+            current = client_handler_available(client_h);   // check if we have available client_handlers, we made the choice to limit the ressources (pool)
             if( current != -1){
+                //If we have available ressources
                 filename = get_file_name(buffer); // TO FREE
                 strcpy(path,SERVER_DIRECTORY);
                 strcat(path,filename);
-                //If we have available ressources
                 client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket
-                client_h[current].client_addr = client_addr;
+                client_h[current].client_addr = client_addr;             // add client_addr 
                 FD_SET(client_h[current].socket,&master);                // add it to the set
-
-                int opcode = get_opcode(buffer);
+                int opcode = get_opcode(buffer);                         // check request type
                 switch (opcode)
                 {
                 case RRQ:
-                    handle_rrq(status,filename,main_socket_fd,&client_h[current]);
-                    time(&client_h[current].last_time_stamp);
+                    handle_rrq(status,filename,main_socket_fd,&client_h[current]); 
+                    time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
                     break;
                 case WRQ:
                     handle_wrq(status,filename,main_socket_fd,&client_h[current],bytes_received,buffer);
+                    time(&client_h[current].last_time_stamp);   // update last time stamp (i did it here for readibility , i could have done it in the function)
                     break;
                 default:
                     break;
@@ -172,42 +183,57 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
         }
         for(int i = 0; i < MAX_CLIENT; i++){    // For every client handler socket
             if(client_h[i].socket != -1){       // If its an active client handler    
-                if(FD_ISSET(client_h[i].socket,&clone)){    // Check if there is someting to read
-                    memset(buffer,0,MAX_BLOCK_SIZE);
+                if(FD_ISSET(client_h[i].socket,&clone)){    // Check if there is someting to read ( received ack or data )
+                    memset(buffer,0,MAX_BLOCK_SIZE);        // Clean the buffer
                     bytes_received = recvfrom(client_h[i].socket, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_h[i].client_addr, &len);
-                               
+                    if(bytes_received == -1){   // handle recvfrom error
+                        perror("[handle_client_requests][recvfrom]");
+                        exit(EXIT_FAILURE);
+                    }         
                     switch (client_h[i].operation)  // depending on operation of the client handler
                     {
                         case READ:
                             client_h[i].block_number = get_block_number(buffer);
+                            handle_rrq(status,filename,main_socket_fd,&client_h[i]);    
                             time(&client_h[i].last_time_stamp); // update last time_stamp
-                            client_h[i].timeout = 0;    // reset timer on success (received an ack for last packed sent)
-                            handle_rrq(status,filename,main_socket_fd,&client_h[i]);
                             break;
                         case WRITE:
                             handle_wrq(status,filename,main_socket_fd,&client_h[i],bytes_received,buffer);
+                            time(&client_h[i].last_time_stamp); // update last time_stamp
                             break;
                         default:
                             break;
                     }
 
                 }
-                else if(client_h[i].operation == READ){
-                    double time_passed = difftime(time(NULL),client_h[i].last_time_stamp);
-                    client_h[i].timeout+=time_passed;
-                    if(client_h[i].timeout >= status.timemout){
-                        // if total time out reached for a request , free all ressources and quit 
+                else if(client_h[i].operation == READ){ // For every client handler that is not active and doing a read operation
+                    double time_passed = difftime(time(NULL),client_h[i].last_time_stamp);  
+                    client_h[i].timeout+=time_passed;               // Update total time passed 
+                    if(client_h[i].timeout >= status.timemout){     // total time out reached for a single block
+                        //free all ressources and quit 
                         printf("RRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
                         fclose(client_h[i].file_fd);
                         free(client_h[i].filename);
                         client_handler_init(&client_h[i]);
                     }
-                    else if(time_passed >= 1){
-                        //printf("time out \n");
+                    else if(time_passed >= status.per_packet_time_out){  // check if a second has passed between last time_stamp and now , if so resend the last packet
                         send_data_packet(status,client_h[i].block_number+1,client_h[i].last_block,&client_h[i].client_addr,client_h[i].last_block_size,client_h[i].socket);
-                        time(&client_h[i].last_time_stamp);
+                        time(&client_h[i].last_time_stamp); // update the last time stamp
                     }
-                    
+                }
+                else if(client_h[i].operation == WRITE){
+                    double time_passed = difftime(time(NULL),client_h[i].last_time_stamp);  
+                    client_h[i].timeout+=time_passed;               // Update total time passed
+                    printf("time passed = %lf\n",client_h[i].timeout); 
+                    time(&client_h[i].last_time_stamp); // update last time_stamp
+                    if(client_h[i].timeout >= status.timemout){     // total time out reached for a single block
+                        //free all ressources and quit 
+                        printf("WRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
+                        fclose(client_h[i].file_fd);
+                        free(client_h[i].filename);
+                        client_handler_init(&client_h[i]);
+                    }
+                    // We don't resend the ack
                 }
             }
         }

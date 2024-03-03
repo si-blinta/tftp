@@ -1,6 +1,9 @@
 #include "client.h"
 #include<unistd.h>
-
+int packet_loss(uint8_t loss_percentage) {
+    int rand_val = rand() % 100;
+    return rand_val < loss_percentage;
+}
 int request(uint16_t opcode, const char* filename, config status, int sockfd, struct sockaddr* addr) {
     //the zero byte
     u_int8_t end_of_file = 0;
@@ -187,11 +190,13 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
         return -1;
     }
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
+        if(!packet_loss(10)){
         if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd) == -1){
             fclose(requested_file); 
             return -1;
         }
-        
+        }
+      
         total_bytes_sent+= bytes_read;  //Increment bytes sent     
         while ( (bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len)) == -1) {
             //Increment the time out for the actual ack packet.
@@ -202,9 +207,13 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
                 fclose(requested_file);
                 return -1 ;
             }
+            
+            if(!packet_loss(10)){
+
             if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd) == -1){
                 fclose(requested_file);
                 return -1;
+            }
             }
             
             //Check if we exceeded the time out for the same packet.
