@@ -29,6 +29,7 @@ void client_handler_init(client_handler* client_h){
     client_h->operation = NONE;
     client_h->socket    = -1;
     client_h->last_time_stamp = -1;
+    client_h->timeout         = 0;
     memset(client_h->last_block,0,MAX_BLOCK_SIZE);
 }
 int client_handler_available(client_handler client_h[MAX_CLIENT]){
@@ -37,7 +38,7 @@ int client_handler_available(client_handler client_h[MAX_CLIENT]){
    }
    return -1; 
 }
-int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h, struct sockaddr_in client_addr) {
+int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h) {
     char buffer[MAX_BLOCK_SIZE];
     size_t bytes_read;
     //check if its first call
@@ -48,7 +49,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         //The file needs to exits
         FILE* requested_file = fopen(path,"rb");
         if (requested_file == NULL) {
-            send_error_packet(status,FILE_NOT_FOUND,"File does not exist",&client_addr,main_socket_fd);
+            send_error_packet(status,FILE_NOT_FOUND,"File does not exist",&client_h->client_addr,main_socket_fd);
             return -1;
         }
         client_h->filename = filename;
@@ -57,7 +58,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->block_number = 1;
         bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);
         client_h->number_bytes_operated += bytes_read; 
-        if(send_data_packet(status,client_h->block_number,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1;
+        if(send_data_packet(status,client_h->block_number,buffer,&client_h->client_addr,bytes_read,client_h->socket) == -1 )return -1;
         memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         client_h->last_block_size = bytes_read;
         return 0;
@@ -73,20 +74,19 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
             client_handler_init(client_h);
             return 0;
         }
-        printf("handle rrq packet loss\n");
+        //printf("handle rrq packet loss\n");
         if(!packet_loss(10)){
-            if(send_data_packet(status,client_h->block_number+1,buffer,&client_addr,bytes_read,client_h->socket) == -1 )return -1; 
+            if(send_data_packet(status,client_h->block_number+1,buffer,&client_h->client_addr,bytes_read,client_h->socket) == -1 )return -1; 
         }
     
         memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         client_h->last_block_size = bytes_read;
-        //usleep(10000);        // for debug purposes
         return 0;
     }
     
 }
 
-int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, struct sockaddr_in client_addr, size_t bytes_received, char buffer[MAX_BLOCK_SIZE]) {
+int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char buffer[MAX_BLOCK_SIZE]) {
     if(client_h->operation == NONE){    
         char path[100] = SERVER_DIRECTORY;
         strcat(path,filename);
@@ -95,14 +95,14 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->file_fd = requested_file;
         client_h->operation = WRITE;
         client_h->block_number = 0; // Respecting TFTP protocol , ack 0 
-        if(send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket) == -1)return -1;
+        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number++,client_h->socket) == -1)return -1;
         return 0;
     }
     else {
         size_t bytes_written = fwrite(get_data(buffer),1,bytes_received-4, client_h->file_fd);  // no need to use fseek because we dont close file
         memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
         client_h->number_bytes_operated += bytes_written;                            // maybe useful for further improvements
-        if(send_ack_packet(status,(struct sockaddr*) &client_addr,client_h->block_number++,client_h->socket) == -1 )return -1;
+        if(send_ack_packet(status,(struct sockaddr*) &client_h->client_addr,client_h->block_number++,client_h->socket) == -1 )return -1;
         if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available 
             printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
@@ -155,11 +155,11 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
                 switch (opcode)
                 {
                 case RRQ:
-                    handle_rrq(status,filename,main_socket_fd,&client_h[current],client_h[current].client_addr);
+                    handle_rrq(status,filename,main_socket_fd,&client_h[current]);
                     time(&client_h[current].last_time_stamp);
                     break;
                 case WRQ:
-                    handle_wrq(status,filename,main_socket_fd,&client_h[current],client_h[current].client_addr,bytes_received,buffer);
+                    handle_wrq(status,filename,main_socket_fd,&client_h[current],bytes_received,buffer);
                     break;
                 default:
                     break;
@@ -180,21 +180,34 @@ static int handle_client_requests(config status,int main_socket_fd){    //TODO e
                     {
                         case READ:
                             client_h[i].block_number = get_block_number(buffer);
-                            time(&client_h[i].last_time_stamp);
-                            handle_rrq(status,filename,main_socket_fd,&client_h[i],client_h[i].client_addr);
+                            time(&client_h[i].last_time_stamp); // update last time_stamp
+                            client_h[i].timeout = 0;    // reset timer on success (received an ack for last packed sent)
+                            handle_rrq(status,filename,main_socket_fd,&client_h[i]);
                             break;
                         case WRITE:
-                            handle_wrq(status,filename,main_socket_fd,&client_h[i],client_h[i].client_addr,bytes_received,buffer);
+                            handle_wrq(status,filename,main_socket_fd,&client_h[i],bytes_received,buffer);
                             break;
                         default:
                             break;
                     }
 
                 }
-                else if(client_h[i].operation == READ && difftime(time(NULL),client_h[i].last_time_stamp) >= 1){
-                    printf("time out \n");
-                    send_data_packet(status,client_h[i].block_number+1,client_h[i].last_block,&client_h[i].client_addr,client_h[i].last_block_size,client_h[i].socket);
-                    time(&client_h[i].last_time_stamp);
+                else if(client_h[i].operation == READ){
+                    double time_passed = difftime(time(NULL),client_h[i].last_time_stamp);
+                    client_h[i].timeout+=time_passed;
+                    if(client_h[i].timeout >= status.timemout){
+                        // if total time out reached for a request , free all ressources and quit 
+                        printf("RRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
+                        fclose(client_h[i].file_fd);
+                        free(client_h[i].filename);
+                        client_handler_init(&client_h[i]);
+                    }
+                    else if(time_passed >= 1){
+                        //printf("time out \n");
+                        send_data_packet(status,client_h[i].block_number+1,client_h[i].last_block,&client_h[i].client_addr,client_h[i].last_block_size,client_h[i].socket);
+                        time(&client_h[i].last_time_stamp);
+                    }
+                    
                 }
             }
         }

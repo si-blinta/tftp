@@ -15,6 +15,7 @@ typedef struct {
     char last_block[MAX_BLOCK_SIZE];
     size_t last_block_size;
     time_t last_time_stamp;
+    double timeout ;
 }client_handler;
 
 enum operation{
