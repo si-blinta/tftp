@@ -41,29 +41,30 @@ void file_control_exit(int thread_id, int id_opened,int status){
 int file_control_synchronize(char* filename,int thread_id,int status){
     struct timespec timeout;
     struct timeval now;
+    pthread_mutex_lock(&files_control_mutex);
     int id_opened = file_control_available(files_open,filename,status);
-    if(id_opened == -1){
+    if(id_opened == -1){    // Means that no one has opened the file or we can access it both (read)
         file_control_modify(files_open,status,thread_id,filename);
         pthread_mutex_unlock(&files_control_mutex);
         gettimeofday(&now, NULL);
         timeout.tv_sec = now.tv_sec + 10;
         timeout.tv_nsec = now.tv_usec * 1000 - 100000;        // minus (0.1 sec) to time out before the client (avoid sending data to disconnected client)
-        int result = pthread_mutex_timedlock(&files_open[thread_id].mutex, &timeout);
+        int result = pthread_mutex_timedlock(&files_open[thread_id].mutex, &timeout);   // We lock the mutex of the thread_id index in files_open
         if(result == ETIMEDOUT){
             return -2;
             
         }
     }
-    else {
+    else {  // Means that some one has the file open and we need to wait for it
         pthread_mutex_unlock(&files_control_mutex);
         gettimeofday(&now, NULL);
         timeout.tv_sec = now.tv_sec + 10;
         timeout.tv_nsec = now.tv_usec * 1000 - 100000;        // minus (0.1 sec) to time out before the client (avoid sending data to disconnected client)
-        int result = pthread_mutex_timedlock(&files_open[id_opened].mutex, &timeout);
+        int result = pthread_mutex_timedlock(&files_open[id_opened].mutex, &timeout);   // We lock the mutex of the holder index in files_open
         if(result == ETIMEDOUT){
             return -2;
             }
-        pthread_mutex_lock(&files_control_mutex);
+        pthread_mutex_lock(&files_control_mutex);   // We succeded the lock of the mutex : we modify the ownership 
         file_control_modify(files_open,status,thread_id,filename);
         pthread_mutex_unlock(&files_control_mutex);
     }

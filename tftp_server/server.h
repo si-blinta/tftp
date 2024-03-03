@@ -30,14 +30,6 @@ enum thread_work_type{
     THREAD_READING,
     THREAD_WRITING
 };
-/**
- * MULTITHREADING : 
- * FOR NOW IF I USE GET THEN PUT EVERYTHING IS GUCCI
- *  BUG : IF I USE PUT THEN GET --------------------------> BUG THE THREADS WAITS FOR THE LOCK THE CLIENT TIME OUTS BUT NOT THE SERVER
- *  TODO: LOCK MUTEX WITH TIMER TO NOT BLOCK FOREVER , SEND AN ERROR PACKET TO THE CLIENT
- * 
- * */
-
 
 //-------------------------------------------------------------------------------------
 /**
@@ -56,7 +48,7 @@ static int init_tftp_server(int port,int* sockfd);
  * 
  * This function listens for and processes incoming client requests, including read requests (RRQ) and write requests (WRQ).
  * 
- * @param sockfd The socket file descriptor used to listen for incoming requests.
+ * @param args A pointer to a thread_context.
  */
 void* handle_client_requests(void* args);
 
@@ -90,7 +82,7 @@ static int process_wrq(config status,char* filename,char* mode, const struct soc
  * @brief Initializes file_control structure.Puts filename to NULL and status to INIT.
  * @param fc The adress of the structure.
  */
-void file_controlinitfile_control (file_control  fc[POOL_SIZE]);
+void file_control_init (file_control  fc[POOL_SIZE]);
 
 //-------------------------------------------------------------------------------------
 /**

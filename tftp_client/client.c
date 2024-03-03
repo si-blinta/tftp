@@ -189,16 +189,17 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     }
     if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
         fclose(requested_file);
-        return -1;
+       
     }
     //change recvfrom timer 
     set_socket_timer(sockfd,status.per_packet_time_out,0);
     while ((bytes_read = fread(data, 1, MAX_BLOCK_SIZE-4, requested_file)) > 0) {
-        if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-            fclose(requested_file); 
-            return -1;
+        if(!packet_loss(status.packet_loss_percentage)){
+            if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
+                fclose(requested_file); 
+                return -1;
+            }
         }
-        
         total_bytes_sent+= bytes_read;  //Increment bytes sent     
         while ( (bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len)) == -1) {
             //Increment the time out for the actual ack packet.
@@ -209,9 +210,11 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
                 fclose(requested_file);
                 return -1 ;
             }
-            if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-                fclose(requested_file);
-                return -1;
+            if(!packet_loss(status.packet_loss_percentage)){
+                if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
+                    fclose(requested_file);
+                    return -1;
+                }
             }
             
             //Check if we exceeded the time out for the same packet.
@@ -286,9 +289,11 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             fclose(requested_file);
             return -1;
         }
-        if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd,-1) == -1){
-            return -1;
+        if(!packet_loss(status.packet_loss_percentage)){
+            if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd,-1) == -1){
+                return -1;
             }
+        }
         if(last_block_number_received != get_block_number(packet)){
             fwrite(get_data(packet), 1, bytes_received - 4, requested_file);
             last_block_number_received = get_block_number(packet);  // update last block #
@@ -310,11 +315,11 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
 
 int main(int argc, char const* argv[]) {
     srand(time(NULL));
-    if(argc < 3){
-        printf("USAGE ./client [server ip] [server port]\n");
+    if(argc < 4){
+        printf("USAGE ./client [server ip] [server port] [packet loss percentage (between 0 and 100)]\n");
         return 0;
     }
-    config status = {.server_ip = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10};
+    config status = {.server_ip = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,.timemout = 10,.packet_loss_percentage=(uint8_t)atoi(argv[3])};
     int server_port = atoi(argv[2]);
     int sockfd;
     struct sockaddr_in server_addr;
