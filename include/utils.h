@@ -14,6 +14,7 @@
 #include <strings.h>
 #include <assert.h>
 #define MAX_BLOCK_SIZE 516
+#define BIG_FILE_MAX_BLOCK_SIZE 65468
 typedef struct {
     char* server_ip ;                // server ip
     char* transfer_mode;          // transfer mode , we only implemented octet
@@ -21,6 +22,8 @@ typedef struct {
     uint8_t per_packet_time_out ; // per-packet retransmission timeout
     uint8_t timemout;             // total retransmission timeout for a single packet.
     uint8_t packet_loss_percentage;
+    char* option;                // For bigfile / windowsize options
+    uint32_t max_file_size;     // For bigfile , it helps controlling files size (in MB)
 }config;
 
 
@@ -316,6 +319,24 @@ int check_packet(char* packet, int type, config status, const struct sockaddr_in
  * @return 1 if no packet loss and 0 if we have a packet loss
  */
 int packet_loss(uint8_t loss_percentage);
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Extracts the option from a TFTP RRQ or WRQ packet.
+ * @param packet The TFTP packet from which to extract the option.
+ * @return A pointer to a dynamically allocated string containing the mode. Caller must free this string.  
+ *
+*/
+char* get_option(char* packet);
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+/**
+ * @brief Extracts the option value from a TFTP RRQ or WRQ packet.
+ * @param packet The TFTP packet from which to extract the option.
+ * @return The option value as int on two bytes.
+ *
+*/
+uint16_t get_option_value(char* packet);
 
 
 

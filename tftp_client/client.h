@@ -156,6 +156,13 @@ static void print_help();
  */
 static void print_status(config status);
 
+//----------------------------------------------------------------------------------------------
+/**
+ * @brief toggle Bigfile option
+ * @param status , The config structure
+ * 
+*/
+static void toggle_bigfile_option(config* status);
 
 
 

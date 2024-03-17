@@ -26,7 +26,10 @@ void client_handler_init(client_handler* client_h){ //for initialization and des
     client_h->socket    = -1;
     client_h->last_time_stamp = -1;
     client_h->timeout         = 0;
-    memset(client_h->last_block,0,MAX_BLOCK_SIZE);
+    client_h->last_block = NULL;
+    client_h->option     = NULL;
+    client_h->last_block_size = 0;
+
 }
 
 int client_handler_available(client_handler client_h[MAX_CLIENT]){
@@ -75,7 +78,19 @@ int client_handler_one_is_active(client_handler client_h[MAX_CLIENT]){
 }
 
 int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* client_h, int client_handler_id) {
-    char buffer[MAX_BLOCK_SIZE];
+    int is_bigfile = 0;
+    char* buffer = NULL;
+    size_t buffer_size = MAX_BLOCK_SIZE;
+    if(client_h->option != NULL && strcmp(client_h->option,"bigfile") == 0){
+        buffer_size = BIG_FILE_MAX_BLOCK_SIZE;
+        is_bigfile = 1;
+    }
+    buffer = malloc(buffer_size);
+    if(buffer == NULL){
+        perror("[handle_rrq][malloc]");
+        exit(EXIT_FAILURE);
+
+    }
     size_t bytes_read;
     //check if its first call
 
@@ -92,23 +107,25 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->file_fd = requested_file;
         client_h->operation = READ;
         client_h->block_number = 1;
-        bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);
+        bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);
         client_h->number_bytes_operated += bytes_read; 
         if(send_data_packet(status,client_h->block_number,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1;
-        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
+        memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
         client_h->last_block_size = bytes_read;
         return 0;
         // We don't close the file , IO operations are very slow
     }
     else {
         client_h->timeout = 0;    // reset timer on success (received an ack for last packed sent)
-        bytes_read = fread(buffer,1,MAX_BLOCK_SIZE-4, client_h->file_fd);  // no need to use fseek because we dont close file
+        bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_read;                            // maybe useful for further improvements
-        if(bytes_read <= 0){   // If we cant read
+        if(bytes_read <= 0 || (!is_bigfile && client_h->block_number == __UINT16_MAX__)){   // If we cant read
             printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
             free(client_h->filename);
             free(client_h->client_addr);
+            free(client_h->last_block);
+            free(client_h->option);
             client_handler_init(client_h);
             return 0;
         }
@@ -116,7 +133,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
             if(send_data_packet(status,client_h->block_number+1,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1; 
         }
     
-        memcpy(client_h->last_block,buffer,MAX_BLOCK_SIZE); // For retransmissions
+        memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
         client_h->last_block_size = bytes_read;
         return 0;
     }
@@ -124,6 +141,12 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
 }
 
 int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char buffer[MAX_BLOCK_SIZE],int client_handler_id) {
+    size_t max_block_size = MAX_BLOCK_SIZE;
+    int is_bigfile = 0;
+    if(client_h->option != NULL && strcmp(client_h->option,"bigfile") == 0){
+        max_block_size = BIG_FILE_MAX_BLOCK_SIZE;
+        is_bigfile = 1;
+    }
     if(client_h->operation == NONE){    
         char path[100] = SERVER_DIRECTORY;
         strcat(path,filename);
@@ -147,11 +170,13 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         if(!packet_loss(status.packet_loss_percentage)){
             if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1 )return -1; // send ack
         }
-        if(bytes_received < MAX_BLOCK_SIZE){   // If last block free ressources , Initialize client_handler to make it available for other clients
+        if(bytes_received < max_block_size || (get_block_number(buffer) == __UINT16_MAX__ && !is_bigfile)){   // If last block free ressources , Initialize client_handler to make it available for other clients
             printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
             fclose(client_h->file_fd);
             free(client_h->filename);
             free(client_h->client_addr);
+            free(client_h->last_block);
+            free(client_h->option);
             client_handler_init(client_h);
             return 0 ;
         }
@@ -162,6 +187,8 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
 
 
 static int handle_client_requests(config status,int main_socket_fd){
+    char* option;
+    int option_value;
     int max_socket_value = main_socket_fd;  // improve performance instead of using FD_SETSIZE
     fd_set master,clone;
     struct timeval timer;
@@ -171,7 +198,7 @@ static int handle_client_requests(config status,int main_socket_fd){
     FD_ZERO(&clone);
     FD_SET(main_socket_fd,&master);
     
-    char buffer[MAX_BLOCK_SIZE];
+    char buffer[BIG_FILE_MAX_BLOCK_SIZE];   //its a global variable so we must use the biggest size we might encounter
     char* filename = NULL;
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
@@ -213,6 +240,17 @@ static int handle_client_requests(config status,int main_socket_fd){
                     if(client_handler_file_available(client_h,filename,READ) == -1){
                         client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket         
                         client_h[current].client_addr = malloc(sizeof(client_addr));// add client_addr TO FREE
+                        //Check if the client has a bigfile option
+                        option        = get_option(buffer);
+                        option_value  = get_option_value(buffer);
+                        if(option != NULL && strcmp(option,"bigfile") == 0 ){   //If bigfile allocate more bytes for lastblock
+                           client_h[current].option =strdup("bigfile");
+                           client_h[current].last_block = malloc(BIG_FILE_MAX_BLOCK_SIZE);
+                        }
+                        else {
+                            client_h[current].option =strdup("none");
+                            client_h[current].last_block = malloc(MAX_BLOCK_SIZE);
+                        }
                         memcpy(client_h[current].client_addr,&client_addr,len);
                         FD_SET(client_h[current].socket,&master);                // add it to the set
                         if(client_h[current].socket > max_socket_value)
@@ -229,6 +267,17 @@ static int handle_client_requests(config status,int main_socket_fd){
                     if(client_handler_file_available(client_h,filename,WRITE) == -1){
                         client_h[current].socket = socket(AF_INET,SOCK_DGRAM,0); // create new socket        
                         client_h[current].client_addr = malloc(sizeof(client_addr));    // add client_addr  TO FREE
+                        //Check if the client has a bigfile option
+                        option        = get_option(buffer);
+                        option_value  = get_option_value(buffer);
+                        if(option != NULL && strcmp(option,"bigfile") == 0 ){   //If bigfile allocate more bytes for lastblock
+                           client_h[current].option =strdup("bigfile");
+                           client_h[current].last_block = malloc(BIG_FILE_MAX_BLOCK_SIZE);
+                        }
+                        else {
+                            client_h[current].option =strdup("none");
+                            client_h[current].last_block = malloc(MAX_BLOCK_SIZE);
+                        }
                         memcpy(client_h[current].client_addr,&client_addr,len);
                         FD_SET(client_h[current].socket,&master);                // add it to the set
                         if(client_h[current].socket > max_socket_value)
@@ -283,6 +332,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                         fclose(client_h[i].file_fd);
                         free(client_h[i].filename);
                         free(client_h[i].client_addr);
+                        free(client_h[i].last_block);
+                        free(client_h[i].option);
                         client_handler_init(&client_h[i]);  
                     }
                     else if(time_passed >= status.per_packet_time_out){  // check if a second has passed between last time_stamp and now , if so resend the last packet
@@ -301,6 +352,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                         fclose(client_h[i].file_fd);
                         free(client_h[i].filename);
                         free(client_h[i].client_addr);
+                        free(client_h[i].last_block);
+                        free(client_h[i].option);
                         client_handler_init(&client_h[i]);
                     }
                     // We don't resend the ack
@@ -319,7 +372,8 @@ int main(int argc, char**argv)
         return 0;
     }
     int server_port = atoi(argv[1]);
-    config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,.timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2])};
+    config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,
+    .timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2]), .max_file_size = 10000};
     int sockfd;
     if(init_tftp_server(server_port,&sockfd) == -1){
         printf("[init_udp_socket] : erreur\n");

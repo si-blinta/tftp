@@ -13,7 +13,8 @@ typedef struct {
     char* filename;
     size_t number_bytes_operated;   // Only used for debug now since we don't close the file
     int operation;
-    char last_block[MAX_BLOCK_SIZE];
+    char* option;
+    char* last_block;
     size_t last_block_size;
     time_t last_time_stamp;
     double timeout ;

@@ -289,3 +289,23 @@ int check_packet(char* packet, int type,config status,const struct sockaddr_in* 
         }
         return 0;
 }
+char* get_option(char* packet){
+    char* filename = get_file_name(packet);
+    char* mode = get_mode(packet);
+    char* option = strdup(packet+ strlen(filename) + strlen(mode) + 4);
+    free(filename);
+    free(mode);
+    return option;
+}
+uint16_t get_option_value(char* packet){
+    char* filename = get_file_name(packet);
+    char* mode = get_mode(packet);
+    char* option = get_option(packet);
+    char* option_value = strdup(packet+ strlen(filename) + strlen(mode) + strlen(option)+ 5);
+    uint16_t value = (uint16_t) atoi(option_value);
+    free(filename);
+    free(mode);
+    free(option);
+    free(option_value);
+    return value;
+}
