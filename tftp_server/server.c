@@ -113,16 +113,8 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
             off_t file_size = st.st_size; // size of requested file
             //If the size of the file requested is bigger than what the client expects , send an error
             if(file_size > client_h->option_value){
-                if(send_error_packet(status,OPTION_ERROR,"File size is bigger than what you expect",
-                    client_h->client_addr,client_h->socket,client_handler_id) == -1)
-                    return -1;
-                fclose(client_h->file_fd);
-                free(client_h->filename);
-                free(client_h->client_addr);
-                free(client_h->last_block);
-                free(client_h->option);
-                client_handler_init(client_h);
-                return 0;
+                send_error_packet(status,OPTION_ERROR,"File size is bigger than what you expect",client_h->client_addr,client_h->socket,client_handler_id);
+                goto stop_error;
             }
             else{
                 client_h->block_number = 0;     // need to start from 0 because client will send ack 0
@@ -130,42 +122,62 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
                 sprintf(str_opt_value,"%lu",client_h->option_value);
                 if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",
                     str_opt_value,client_h->socket,client_handler_id) == -1)
-                    return -1;
+                    goto stop_error;
             }
         }
         else{
             bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);
             client_h->number_bytes_operated += bytes_read; 
-            if(send_data_packet(status,client_h->block_number,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1;
+            if(send_data_packet(status,client_h->block_number,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )
+                goto stop_error;
             memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
             client_h->last_block_size = bytes_read;
         }
-        return 0;
-        
-        // We don't close the file , IO operations are very slow
+        return 0;   // return without stopping the transmissions with the client
     }
     else {
         client_h->timeout = 0;    // reset timer on success (received an ack for last packed sent)
         bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);  // no need to use fseek because we dont close file
         client_h->number_bytes_operated += bytes_read;                            // maybe useful for further improvements
         if(bytes_read <= 0 || (!is_bigfile && client_h->block_number == __UINT16_MAX__)){   // If we cant read
-            printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
-            fclose(client_h->file_fd);
-            free(client_h->filename);
-            free(client_h->client_addr);
-            free(client_h->last_block);
-            free(client_h->option);
-            client_handler_init(client_h);
-            return 0;
+            goto stop_success;
         }
         if(!packet_loss(status.packet_loss_percentage)){
-            if(send_data_packet(status,client_h->block_number+1,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1; 
+            if(send_data_packet(status,client_h->block_number+1,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )
+                goto stop_error; 
         }
-    
         memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
         client_h->last_block_size = bytes_read;
-        return 0;
+        return 0;   //return without stopping the transmissions with the client
     }
+stop_error:
+    printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    if(client_h->file_fd != NULL)
+        fclose(client_h->file_fd);
+    if(client_h->filename != NULL)
+        free(client_h->filename);
+    if(client_h->client_addr != NULL)
+        free(client_h->client_addr);
+    if(client_h->last_block != NULL)
+        free(client_h->last_block);
+    if(client_h->option != NULL)
+        free(client_h->option);
+    client_handler_init(client_h);
+    return 0 ;
+stop_success:
+    printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    if(client_h->file_fd != NULL)
+        fclose(client_h->file_fd);
+    if(client_h->filename != NULL)
+        free(client_h->filename);
+    if(client_h->client_addr != NULL)
+        free(client_h->client_addr);
+    if(client_h->last_block != NULL)
+        free(client_h->last_block);
+    if(client_h->option != NULL)
+        free(client_h->option);
+    client_handler_init(client_h);
+    return 0 ;
     
 }
 
@@ -177,14 +189,10 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         is_bigfile = 1;
     }
     if(client_h->operation == NONE){    
+        FILE* requested_file = NULL;
         char path[100] = SERVER_DIRECTORY;
         strcat(path,filename);
-        FILE* requested_file = fopen(path,"wb");
-        if (requested_file == NULL) {
-            send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_h->client_addr,main_socket_fd,client_handler_id);
-            return -1;
-        }
-        client_h->file_fd = requested_file;
+
         client_h->block_number = 0; // Respecting TFTP protocol , ack 0 
         client_h->filename = filename;  
         client_h->operation = WRITE;
@@ -192,30 +200,34 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         if(is_bigfile){
             if(client_h->option_value > status.max_file_size){
                 //Here the Client wants to send a file that doesnt respect maximum file size allowed to be sent to the server
-                if(send_error_packet(status,OPTION_ERROR,"File size is larger then allowed",
-                    client_h->client_addr,client_h->socket,client_handler_id) == -1)
-                    return -1;
-                fclose(client_h->file_fd);
-                free(client_h->filename);
-                free(client_h->client_addr);
-                free(client_h->last_block);
-                free(client_h->option);
-                client_handler_init(client_h);
-                return 0 ;
+                send_error_packet(status,OPTION_ERROR,"File size is larger then allowed",client_h->client_addr,client_h->socket,client_handler_id);
+                goto stop_error;
             }
             else{
                 //Send OACK packet with the file_size that the user sent
+                requested_file = fopen(path,"wb");
+                if (requested_file == NULL) {
+                    send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_h->client_addr,main_socket_fd,client_handler_id);
+                    goto stop_error;
+                }
                 char str_opt_value[10];
                 sprintf(str_opt_value,"%lu",client_h->option_value);
                 if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",
                     str_opt_value,client_h->socket,client_handler_id) == -1)
-                    return -1;
+                    goto stop_error;
             }
         }
         else {
-            if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1)return -1;
+            requested_file = fopen(path,"wb");
+            if (requested_file == NULL) {
+                send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_h->client_addr,main_socket_fd,client_handler_id);
+                goto stop_error;
+            }
+            if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1)
+                goto stop_error;
         }
-        return 0;
+        client_h->file_fd = requested_file;
+        return 0;       // return but not stop the transmissions with the client
     }
     else {
         client_h->timeout = 0;  // reset timer because we received a packet
@@ -227,21 +239,41 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
             client_h->number_bytes_operated += bytes_written;   // maybe useful for further improvements
         }
         if(!packet_loss(status.packet_loss_percentage)){
-            if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1 )return -1; // send ack
+            if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1 )
+                goto stop_error;
         }
         if(bytes_received < max_block_size || (get_block_number(buffer) == __UINT16_MAX__ && !is_bigfile)){   // If last block free ressources , Initialize client_handler to make it available for other clients
-            printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
-            fclose(client_h->file_fd);
-            free(client_h->filename);
-            free(client_h->client_addr);
-            free(client_h->last_block);
-            free(client_h->option);
-            client_handler_init(client_h);
-            return 0 ;
+            goto stop_success;
         }
-        return 0;
     }
-    
+stop_error:
+    printf("WRQ FAILURE : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    if(client_h->file_fd != NULL)
+        fclose(client_h->file_fd);
+    if(client_h->filename != NULL)
+        free(client_h->filename);
+    if(client_h->client_addr != NULL)
+        free(client_h->client_addr);
+    if(client_h->last_block != NULL)
+        free(client_h->last_block);
+    if(client_h->option != NULL)
+        free(client_h->option);
+    client_handler_init(client_h);
+    return -1 ;
+stop_success:
+    printf("WRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    if(client_h->file_fd != NULL)
+        fclose(client_h->file_fd);
+    if(client_h->filename != NULL)
+        free(client_h->filename);
+    if(client_h->client_addr != NULL)
+        free(client_h->client_addr);
+    if(client_h->last_block != NULL)
+        free(client_h->last_block);
+    if(client_h->option != NULL)
+        free(client_h->option);
+    client_handler_init(client_h);
+    return 0 ;
 }
 
 
@@ -271,21 +303,21 @@ static int handle_client_requests(config status,int main_socket_fd){
         if(client_handler_one_is_active(client_h) == 1){    // if at least one client handler is active then use time out
             if(select(max_socket_value+1,&clone,NULL,NULL,&timer) == -1){   
                 perror("[handle_client_requests][select]");
-                exit(EXIT_FAILURE);
+                exit(EXIT_FAILURE); // critical errror
             }
         }
         else {
             printf("Waiting for connexions (select is blocking)\n");
             if(select(max_socket_value+1,&clone,NULL,NULL,NULL) == -1){   // if no client handler is active make select blocking to improve performance
                 perror("[handle_client_requests][select]");
-                exit(EXIT_FAILURE);
+                exit(EXIT_FAILURE); // critical errror
             }
         }
         if(FD_ISSET(main_socket_fd,&clone)){        // if its a RRQ / WRQ since its sent to the port 8080 in our case
             bytes_received = recvfrom(main_socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr, &len);
             if(bytes_received == -1){ // handle recvfrom errors
                 perror("[handle_client_requests][recvfrom]");
-                exit(EXIT_FAILURE);
+                exit(EXIT_FAILURE); // critical errror
             }
             current = client_handler_available(client_h);   // check if we have available client_handlers, we made the choice to limit the ressources (pool)
             if( current != -1){
