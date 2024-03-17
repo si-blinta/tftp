@@ -1,6 +1,4 @@
 #include "client.h"
-#include<unistd.h>
-#include <sys/stat.h>
 int request(uint16_t opcode, const char* filename, config status, int sockfd, struct sockaddr* addr) {
     //the zero byte
     u_int8_t end_of_file = 0;
@@ -8,7 +6,7 @@ int request(uint16_t opcode, const char* filename, config status, int sockfd, st
     size_t packet_size = strlen(filename) + strlen(status.transfer_mode) + 4 ;
     char str_max_file[10];
     if(status.option != NULL && strcmp(status.option,"bigfile") == 0){
-        sprintf(str_max_file, "%d", status.max_file_size);
+        sprintf(str_max_file, "%lu", status.max_file_size);
         packet_size = strlen(filename) + strlen(status.transfer_mode) + strlen(status.option) + strlen(str_max_file) + 4 + 2 ;
     }
     char* packet = malloc(packet_size);
@@ -48,12 +46,11 @@ int request(uint16_t opcode, const char* filename, config status, int sockfd, st
             struct stat st;
             stat(filename, &st);
             off_t size = st.st_size;
-            if(size < 1000000){
-                fprintf(stderr,"[WRQ][Bigfile] you must use bigfile only for files bigger than 1 MB\n");
+            if(size < 32*(1024*1024)){
+                fprintf(stderr,"[WRQ][Bigfile] you must use bigfile only for files bigger than 32 MB\n");
                 goto out_error;
             }
             char str_file_size[10];
-            size = size / 1000000;    //Convert to MB
             sprintf(str_file_size, "%ld", size);
             memcpy(packet + offset, str_file_size, strlen(str_file_size));
             offset += strlen(str_file_size);
@@ -198,7 +195,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     */
     set_socket_timer(sockfd,status.timemout,0);
     uint8_t timeout = 0;                //the time out in which we wait for the same ack before quiting the program.
-    char ack_packet[4];    // buffer to store ack packet
+    char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;  
     size_t total_bytes_sent = 0;    //keep track of total bytes sent
@@ -217,8 +214,11 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     }
     char* data = NULL;
     size_t data_size = MAX_BLOCK_SIZE - 4;
-    if(status.option != NULL && strcmp(status.option,"bigfile") == 0)
+    int bigfile = 0;
+    if(status.option != NULL && strcmp(status.option,"bigfile") == 0){
         data_size = BIG_FILE_MAX_BLOCK_SIZE - 4;
+        bigfile = 1;
+    }
     data = malloc(data_size);
     if(data == NULL ){
         perror("[send_file][malloc]");
@@ -230,7 +230,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     size_t bytes_received = 0;
     uint16_t block_number = 1;               // the current block 
  
-    // Wait for the initial ACK for the WRQ
+    // Wait for the initial ACK for the WRQ OR OACK or an error 
     bytes_received = recvfrom(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)server_addr, &len);
     if (bytes_received == -1) {
         if(errno != EWOULDBLOCK && errno != EAGAIN){
@@ -245,10 +245,15 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     if(status.trace){
         trace_received(ack_packet,bytes_received,-1);
     }
-    if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
+    if(bigfile){
+        if(check_packet(ack_packet,OACK,status,server_addr,sockfd,-1) == -1){
+            fclose(requested_file);
+            return -1;
+        }
+    }
+    else if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
         fclose(requested_file);
         return -1;
-       
     }
     //change recvfrom timer 
     set_socket_timer(sockfd,status.per_packet_time_out,0);
@@ -343,6 +348,27 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     if(request(RRQ, filename, status, sockfd, (struct sockaddr*)server_addr) == -1){
         return -1;
     }
+    if(is_bigfile){ //IF BIGFILE WAIT FOR OACK AND SEND AN ACK0 AFTER
+        bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
+        if(bytes_received == -1) {
+            //Actual error when using recvfrom
+            if(errno != EWOULDBLOCK && errno != EAGAIN){
+                perror("[recvfrom][receive_file]");
+                fclose(requested_file);
+                return -1;
+            }
+            //Time out occured
+            printf("[get]: FAILED : time out reached \n");
+            fclose(requested_file);
+            return -1;                
+        }
+        if(check_packet(packet,OACK,status,server_addr,sockfd,-1) == -1){
+            fclose(requested_file);
+            return -1;
+        }
+        if(send_ack_packet(status,(struct sockaddr*)server_addr,0,sockfd,-1) == -1)
+            return -1;
+    }
     while (1) {
         bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
         if(bytes_received == -1) {
@@ -396,7 +422,7 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
     config status = {.server_ip = (char*)argv[1],.transfer_mode = "octet",.trace = 0,.per_packet_time_out = 1,
-    .timemout = 10,.packet_loss_percentage=(uint8_t)atoi(argv[3]), .option = NULL, .max_file_size = 10000 };
+    .timemout = 10,.packet_loss_percentage=(uint8_t)atoi(argv[3]), .option = NULL, .max_file_size = MAX_FILE_SIZE};
     int server_port = atoi(argv[2]);
     int sockfd;
     struct sockaddr_in server_addr;

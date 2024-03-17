@@ -107,12 +107,41 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         client_h->file_fd = requested_file;
         client_h->operation = READ;
         client_h->block_number = 1;
-        bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);
-        client_h->number_bytes_operated += bytes_read; 
-        if(send_data_packet(status,client_h->block_number,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1;
-        memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
-        client_h->last_block_size = bytes_read;
+        if(is_bigfile){
+            struct stat st;
+            stat(path, &st);
+            off_t file_size = st.st_size; // size of requested file
+            //If the size of the file requested is bigger than what the client expects , send an error
+            if(file_size > client_h->option_value){
+                if(send_error_packet(status,OPTION_ERROR,"File size is bigger than what you expect",
+                    client_h->client_addr,client_h->socket,client_handler_id) == -1)
+                    return -1;
+                fclose(client_h->file_fd);
+                free(client_h->filename);
+                free(client_h->client_addr);
+                free(client_h->last_block);
+                free(client_h->option);
+                client_handler_init(client_h);
+                return 0;
+            }
+            else{
+                client_h->block_number = 0;     // need to start from 0 because client will send ack 0
+                char str_opt_value[10];
+                sprintf(str_opt_value,"%lu",client_h->option_value);
+                if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",
+                    str_opt_value,client_h->socket,client_handler_id) == -1)
+                    return -1;
+            }
+        }
+        else{
+            bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);
+            client_h->number_bytes_operated += bytes_read; 
+            if(send_data_packet(status,client_h->block_number,buffer,client_h->client_addr,bytes_read,client_h->socket,client_handler_id) == -1 )return -1;
+            memcpy(client_h->last_block,buffer,buffer_size); // For retransmissions
+            client_h->last_block_size = bytes_read;
+        }
         return 0;
+        
         // We don't close the file , IO operations are very slow
     }
     else {
@@ -150,12 +179,42 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
     if(client_h->operation == NONE){    
         char path[100] = SERVER_DIRECTORY;
         strcat(path,filename);
-        FILE* requested_file = fopen(path,"wb");  // create the file
-        client_h->filename = filename;
+        FILE* requested_file = fopen(path,"wb");
+        if (requested_file == NULL) {
+            send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_h->client_addr,main_socket_fd,client_handler_id);
+            return -1;
+        }
         client_h->file_fd = requested_file;
-        client_h->operation = WRITE;
         client_h->block_number = 0; // Respecting TFTP protocol , ack 0 
-        if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1)return -1;
+        client_h->filename = filename;  
+        client_h->operation = WRITE;
+        //Check if the option value is okay with server settings
+        if(is_bigfile){
+            if(client_h->option_value > status.max_file_size){
+                //Here the Client wants to send a file that doesnt respect maximum file size allowed to be sent to the server
+                if(send_error_packet(status,OPTION_ERROR,"File size is larger then allowed",
+                    client_h->client_addr,client_h->socket,client_handler_id) == -1)
+                    return -1;
+                fclose(client_h->file_fd);
+                free(client_h->filename);
+                free(client_h->client_addr);
+                free(client_h->last_block);
+                free(client_h->option);
+                client_handler_init(client_h);
+                return 0 ;
+            }
+            else{
+                //Send OACK packet with the file_size that the user sent
+                char str_opt_value[10];
+                sprintf(str_opt_value,"%lu",client_h->option_value);
+                if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",
+                    str_opt_value,client_h->socket,client_handler_id) == -1)
+                    return -1;
+            }
+        }
+        else {
+            if(send_ack_packet(status,(struct sockaddr*) client_h->client_addr,client_h->block_number,client_h->socket,client_handler_id) == -1)return -1;
+        }
         return 0;
     }
     else {
@@ -243,9 +302,11 @@ static int handle_client_requests(config status,int main_socket_fd){
                         //Check if the client has a bigfile option
                         option        = get_option(buffer);
                         option_value  = get_option_value(buffer);
-                        if(option != NULL && strcmp(option,"bigfile") == 0 ){   //If bigfile allocate more bytes for lastblock
+                        if(option != NULL && strcmp(option,"bigfile") == 0 ){   //If bigfile allocate more bytes for lastblock and also update infos
                            client_h[current].option =strdup("bigfile");
                            client_h[current].last_block = malloc(BIG_FILE_MAX_BLOCK_SIZE);
+                           client_h[current].option_value = option_value;
+                           printf("option value  = %d | %ld \n",option_value,client_h[current].option_value);
                         }
                         else {
                             client_h[current].option =strdup("none");
@@ -273,6 +334,7 @@ static int handle_client_requests(config status,int main_socket_fd){
                         if(option != NULL && strcmp(option,"bigfile") == 0 ){   //If bigfile allocate more bytes for lastblock
                            client_h[current].option =strdup("bigfile");
                            client_h[current].last_block = malloc(BIG_FILE_MAX_BLOCK_SIZE);
+                           client_h[current].option_value = option_value;
                         }
                         else {
                             client_h[current].option =strdup("none");
@@ -373,7 +435,7 @@ int main(int argc, char**argv)
     }
     int server_port = atoi(argv[1]);
     config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,
-    .timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2]), .max_file_size = 10000};
+    .timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2]), .max_file_size = 1024*1024*10};
     int sockfd;
     if(init_tftp_server(server_port,&sockfd) == -1){
         printf("[init_udp_socket] : erreur\n");

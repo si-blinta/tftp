@@ -18,6 +18,7 @@ typedef struct {
     size_t last_block_size;
     time_t last_time_stamp;
     double timeout ;
+    uint64_t option_value;
 }client_handler;
 
 enum operation{

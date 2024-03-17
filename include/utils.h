@@ -13,6 +13,7 @@
 #include <time.h>
 #include <strings.h>
 #include <assert.h>
+#include <sys/stat.h>
 #define MAX_BLOCK_SIZE 516
 #define BIG_FILE_MAX_BLOCK_SIZE 65468
 typedef struct {
@@ -23,7 +24,7 @@ typedef struct {
     uint8_t timemout;             // total retransmission timeout for a single packet.
     uint8_t packet_loss_percentage;
     char* option;                // For bigfile / windowsize options
-    uint32_t max_file_size;     // For bigfile , it helps controlling files size (in MB)
+    uint64_t max_file_size;     // For bigfile , it helps controlling files size in bytes
 }config;
 
 
@@ -96,7 +97,8 @@ enum opcode{
     WRQ,
     DATA,
     ACK,
-    ERROR
+    ERROR,
+    OACK
 };
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -111,7 +113,8 @@ enum error {
     ILLEGAL_OPERATION,
     UKNOWN_ID,
     FILE_ALREADY_EXISTS,
-    NO_SUCH_USER
+    NO_SUCH_USER,
+    OPTION_ERROR
 };
 
 
@@ -336,7 +339,9 @@ char* get_option(char* packet);
  * @return The option value as int on two bytes.
  *
 */
-uint16_t get_option_value(char* packet);
+uint64_t get_option_value(char* packet);
+char* build_oack_packet(char* option,char* value, size_t* packet_size);
+int send_oack_packet(config status,const struct sockaddr* client_addr,char* option,char* value, int sockfd,int client_handler_id);
 
 
 

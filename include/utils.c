@@ -219,6 +219,11 @@ void trace_sent(char* packet,size_t packet_size,int client_handler_id){
             free(error_msg);
             break;
         }
+        case OACK:{
+            if(client_handler_id != -1)printf("CLIENT HANDLER # %d ",client_handler_id);
+            printf("sent OACK <block=%d>\n",get_block_number(packet));
+            break;
+        }
         default:
             break;
     }
@@ -256,8 +261,12 @@ void trace_received(char* packet,size_t packet_size,int client_handler_id){
         case ERROR:
             error_msg = get_error_message(packet);
             if(client_handler_id != -1)printf("CLIENT HANDLER # %d ",client_handler_id);
-            printf("received ERROR <code=%d, msg=%s>\n",get_error_code(packet),get_error_message(packet));
+            printf("received ERROR <code=%d, msg=%s>\n",get_error_code(packet),error_msg);
             free(error_msg);
+            break;
+         case OACK:
+            if(client_handler_id != -1)printf("CLIENT HANDLER # %d ",client_handler_id);
+            printf("received OACK <block=%d>\n",get_block_number(packet));
             break;
         default:
             break;
@@ -297,15 +306,72 @@ char* get_option(char* packet){
     free(mode);
     return option;
 }
-uint16_t get_option_value(char* packet){
+uint64_t get_option_value(char* packet){
     char* filename = get_file_name(packet);
     char* mode = get_mode(packet);
     char* option = get_option(packet);
     char* option_value = strdup(packet+ strlen(filename) + strlen(mode) + strlen(option)+ 5);
-    uint16_t value = (uint16_t) atoi(option_value);
+    uint64_t value = (uint64_t) strtoll(option_value,NULL,10);
     free(filename);
     free(mode);
     free(option);
     free(option_value);
     return value;
 }
+char* build_oack_packet(char* option,char* value, size_t* packet_size) {
+    *packet_size = 2 + strlen(option) +1 + strlen(value) + 1; // Opcode (2 bytes) + Block number (2 bytes)
+    char* packet = malloc(*packet_size);
+    if (packet == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    uint16_t net_opcode = htons(OACK);
+    int offset = 0;
+    memcpy(packet + offset, &net_opcode, sizeof(net_opcode));
+    offset += sizeof(net_opcode);
+    memcpy(packet + offset, option, strlen(option));
+    packet[offset++] = 0;
+    memcpy(packet + offset, value, strlen(value));
+    packet[offset++] = 0;
+    // No need to adjust offset after this, as we're done
+    return packet;
+}
+int send_oack_packet(config status,const struct sockaddr* client_addr,char* option,char* value, int sockfd,int client_handler_id) {
+    size_t packet_size;
+    char* oack_packet = build_oack_packet(option,value,&packet_size);
+
+    if (oack_packet == NULL) {
+        fprintf(stderr,"[send_ack_packet] : failed to build OACK packet\n");
+        return -1; 
+    }
+
+    if(sendto(sockfd, oack_packet, packet_size, 0, client_addr, sizeof(*client_addr))<0){
+        if(errno != EWOULDBLOCK && errno != EAGAIN){
+            perror("[sendto]");
+            free(oack_packet); 
+            return -1;
+        }
+        //Time out reached
+        printf("[send_oack_packet] : time out\n");
+        free(oack_packet);
+        return -1;
+    }
+    if(status.trace){
+        trace_sent(oack_packet,packet_size,client_handler_id);
+    }
+    free(oack_packet);
+    return 0;
+}
+
+/**
+ * Depending on the original transfer request there are two ways for a
+   client to confirm acceptance of a server's OACK.  If the transfer was
+   initiated with a Read Request, then an ACK (with the data block
+   number set to 0) is sent by the client to confirm the values in the
+   server's OACK packet.  If the transfer was initiated with a Write
+   Request, then the client begins the transfer with the first DATA
+   packet, using the negotiated values.  If the client rejects the OACK,
+   then it sends an ERROR packet, with error code 8, to the server and
+   the transfer is terminated
+*/
