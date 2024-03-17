@@ -4,7 +4,7 @@
 #include <sys/select.h>
 #define SERVER_DIRECTORY "../server_directory/"
 #define MAX_CLIENT 2
-
+#define SERVER_MAX_FILE_SIZE 1024*1024 * 500 // 500 mb
 typedef struct {
     FILE* file_fd;
     int socket;

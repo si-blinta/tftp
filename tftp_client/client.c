@@ -198,6 +198,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     char ack_packet[MAX_BLOCK_SIZE];    // buffer to store ack packet
     memset(ack_packet, 0, sizeof(ack_packet));
     FILE* requested_file = NULL;  
+    char* data = NULL;
     size_t total_bytes_sent = 0;    //keep track of total bytes sent
     //TODO : gerer le netascii
     if(!strcasecmp(status.transfer_mode,"octet")){
@@ -205,14 +206,13 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     }
     if (requested_file == NULL) {
         perror("Failed to open file");
-        return -1 ; 
+        goto out_failure;
     }
     time_t start = time(NULL); 
     //Send a WRQ request
     if(request(WRQ, filename, status, sockfd, (struct sockaddr*)server_addr) == -1){
-        return -1;
+        goto out_failure;
     }
-    char* data = NULL;
     size_t data_size = MAX_BLOCK_SIZE - 4;
     int bigfile = 0;
     if(status.option != NULL && strcmp(status.option,"bigfile") == 0){
@@ -222,7 +222,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     data = malloc(data_size);
     if(data == NULL ){
         perror("[send_file][malloc]");
-        return -1;
+        goto out_failure;
     }
     memset(data, 0, strlen(data));
     size_t bytes_read;                  // bytes_read using fread
@@ -235,33 +235,28 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     if (bytes_received == -1) {
         if(errno != EWOULDBLOCK && errno != EAGAIN){
             perror("[recvfrom]");
-            fclose(requested_file);
-            return -1 ;
+            goto out_failure;
         }
         printf("[put] : time out reached : %d seconds\n",status.timemout);
-        fclose(requested_file);
-        return -1 ;
+        goto out_failure;
     }
     if(status.trace){
         trace_received(ack_packet,bytes_received,-1);
     }
     if(bigfile){
         if(check_packet(ack_packet,OACK,status,server_addr,sockfd,-1) == -1){
-            fclose(requested_file);
-            return -1;
+            goto out_failure;
         }
     }
     else if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
-        fclose(requested_file);
-        return -1;
+        goto out_failure;
     }
     //change recvfrom timer 
     set_socket_timer(sockfd,status.per_packet_time_out,0);
     while ((bytes_read = fread(data, 1, data_size, requested_file)) > 0) {
         if(!packet_loss(status.packet_loss_percentage)){
             if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-                fclose(requested_file); 
-                return -1;
+                goto out_failure;
             }
         }
         total_bytes_sent+= bytes_read;  //Increment bytes sent     
@@ -271,27 +266,23 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
             //Error recvfrom
             if(errno != EWOULDBLOCK && errno != EAGAIN){
                 perror("[recvfrom]");
-                fclose(requested_file);
-                return -1 ;
+                goto out_failure;
             }
             if(!packet_loss(status.packet_loss_percentage)){
                 if(send_data_packet(status,block_number,data,server_addr,bytes_read,sockfd,-1) == -1){
-                    fclose(requested_file);
-                    return -1;
+                    goto out_failure;
                 }
             }
             
             //Check if we exceeded the time out for the same packet.
             if(timeout >= status.timemout){
                 printf("[put] : time out reached : %d seconds\n",timeout);
-                fclose(requested_file);
-                return -1;
+                goto out_failure;
             }
         }
         //Check for unexpected packets
         if(check_packet(ack_packet,ACK,status,server_addr,sockfd,-1) == -1){
-            fclose(requested_file);
-            return -1;
+            goto out_failure;
         }
         if(status.trace){
             trace_received(ack_packet,bytes_received,-1);
@@ -300,7 +291,7 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
         timeout = 0;                //Reset time out , because a new data block is about to be sent
         block_number++ ;           //Increment block number
         if(block_number == 0 && !(status.option != NULL && strcmp(status.option,"bigfile") == 0)){
-            printf("bye\n");
+            printf("[INFO] reached maximum block number\n");
             break;
         }
     }
@@ -309,6 +300,12 @@ static int send_file(const char* filename,config status,struct sockaddr_in* serv
     fclose(requested_file);
     free(data);
     return 0;
+out_failure:
+    if(requested_file != NULL)
+        fclose(requested_file);
+    if(data != NULL)
+        free(data);
+    return -1;
 }
 static int receive_file(const char* filename, config status ,struct sockaddr_in* server_addr,int sockfd) {
     /**
@@ -325,7 +322,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     packet = malloc(packet_size);
     if(packet == NULL){
         perror("[receive_file][malloc]");
-        return -1;
+        goto out_failure;
     }
     set_socket_timer(sockfd,status.timemout,0);
     FILE* requested_file = NULL;
@@ -335,8 +332,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     }
     if (!requested_file) {
         perror("Failed to open file");
-        fclose(requested_file);
-        return -1;
+        goto out_failure;
     }
     size_t total_bytes_received = 0;
     size_t bytes_received = 0 ;
@@ -346,7 +342,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     time_t start = time(NULL);
     // Send RRQ 
     if(request(RRQ, filename, status, sockfd, (struct sockaddr*)server_addr) == -1){
-        return -1;
+        goto out_failure;
     }
     if(is_bigfile){ //IF BIGFILE WAIT FOR OACK AND SEND AN ACK0 AFTER
         bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
@@ -354,20 +350,17 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             //Actual error when using recvfrom
             if(errno != EWOULDBLOCK && errno != EAGAIN){
                 perror("[recvfrom][receive_file]");
-                fclose(requested_file);
-                return -1;
+                goto out_failure;
             }
             //Time out occured
             printf("[get]: FAILED : time out reached \n");
-            fclose(requested_file);
-            return -1;                
+            goto out_failure;              
         }
         if(check_packet(packet,OACK,status,server_addr,sockfd,-1) == -1){
-            fclose(requested_file);
-            return -1;
+            goto out_failure;
         }
         if(send_ack_packet(status,(struct sockaddr*)server_addr,0,sockfd,-1) == -1)
-            return -1;
+            goto out_failure;
     }
     while (1) {
         bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
@@ -375,24 +368,21 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             //Actual error when using recvfrom
             if(errno != EWOULDBLOCK && errno != EAGAIN){
                 perror("[recvfrom][receive_file]");
-                fclose(requested_file);
-                return -1;
+                goto out_failure;
             }
             //Time out occured
             printf("[get]: FAILED : time out reached \n");
-            fclose(requested_file);
-            return -1;                
+            goto out_failure;              
         }
         if(status.trace){
             trace_received(packet,bytes_received,-1);
         }
         if(check_packet(packet,DATA,status,server_addr,sockfd,-1) == -1){
-            fclose(requested_file);
-            return -1;
+            goto out_failure;
         }
         if(!packet_loss(status.packet_loss_percentage)){
             if(send_ack_packet(status,(struct sockaddr*)server_addr,get_block_number(packet),sockfd,-1) == -1){
-                return -1;
+                goto out_failure;
             }
         }
         if(last_block_number_received != get_block_number(packet)){
@@ -405,14 +395,19 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
             break;
         }
     }
-    fclose(requested_file);
-    free(packet);
+    
     time_t end = time(NULL);
     printf("Received %ld bytes in %lf secondes\n",total_bytes_received,difftime(end, start));
+    fclose(requested_file);
+    free(packet);
     return 0;
+out_failure:
+    if(requested_file != NULL)
+        fclose(requested_file);
+    if(packet != NULL)
+        free(packet);
+    return -1;
 }
-
-
 
 
 int main(int argc, char const* argv[]) {

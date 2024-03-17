@@ -88,7 +88,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
     buffer = malloc(buffer_size);
     if(buffer == NULL){
         perror("[handle_rrq][malloc]");
-        exit(EXIT_FAILURE);
+        goto stop_error;
 
     }
     size_t bytes_read;
@@ -101,7 +101,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         FILE* requested_file = fopen(path,"rb");
         if (requested_file == NULL) {
             send_error_packet(status,FILE_NOT_FOUND,"File does not exist",client_h->client_addr,main_socket_fd,client_handler_id);
-            return -1;
+            goto stop_error;
         }
         client_h->filename = filename;
         client_h->file_fd = requested_file;
@@ -151,7 +151,7 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
         return 0;   //return without stopping the transmissions with the client
     }
 stop_error:
-    printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    printf("RRQ FAILURE : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
     if(client_h->file_fd != NULL)
         fclose(client_h->file_fd);
     if(client_h->filename != NULL)
@@ -165,7 +165,7 @@ stop_error:
     client_handler_init(client_h);
     return 0 ;
 stop_success:
-    printf("RRQ SUCCES : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
+    printf("RRQ SUCCESS : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
     if(client_h->file_fd != NULL)
         fclose(client_h->file_fd);
     if(client_h->filename != NULL)
@@ -245,7 +245,9 @@ int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* 
         if(bytes_received < max_block_size || (get_block_number(buffer) == __UINT16_MAX__ && !is_bigfile)){   // If last block free ressources , Initialize client_handler to make it available for other clients
             goto stop_success;
         }
+    return 0;   //return but not stop the transmissiosn with the client.
     }
+
 stop_error:
     printf("WRQ FAILURE : <%s, %ld bytes>\n",client_h->filename,client_h->number_bytes_operated);
     if(client_h->file_fd != NULL)
@@ -467,7 +469,7 @@ int main(int argc, char**argv)
     }
     int server_port = atoi(argv[1]);
     config status = {.server_ip = NULL,.transfer_mode = NULL,.trace = 1,.per_packet_time_out = 1,
-    .timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2]), .max_file_size = 1024*1024*10};
+    .timemout = 10, .packet_loss_percentage = (uint8_t)atoi(argv[2]), .max_file_size = SERVER_MAX_FILE_SIZE};
     int sockfd;
     if(init_tftp_server(server_port,&sockfd) == -1){
         printf("[init_udp_socket] : erreur\n");
