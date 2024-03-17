@@ -111,19 +111,12 @@ int handle_rrq(config status, char* filename,int main_socket_fd,client_handler* 
             struct stat st;
             stat(path, &st);
             off_t file_size = st.st_size; // size of requested file
-            //If the size of the file requested is bigger than what the client expects , send an error
-            if(file_size > client_h->option_value){
-                send_error_packet(status,OPTION_ERROR,"File size is bigger than what you expect",client_h->client_addr,client_h->socket,client_handler_id);
+            client_h->block_number = 0;     // need to start from 0 because client will send ack 0
+            char str_opt_value[10];
+            sprintf(str_opt_value,"%lu",file_size);
+            if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",//Send OACK with the requested file size as value of option
+            str_opt_value,client_h->socket,client_handler_id) == -1)
                 goto stop_error;
-            }
-            else{
-                client_h->block_number = 0;     // need to start from 0 because client will send ack 0
-                char str_opt_value[10];
-                sprintf(str_opt_value,"%lu",client_h->option_value);
-                if(send_oack_packet(status,(struct sockaddr*) client_h->client_addr,"bigfile",
-                    str_opt_value,client_h->socket,client_handler_id) == -1)
-                    goto stop_error;
-            }
         }
         else{
             bytes_read = fread(buffer,1,buffer_size-4, client_h->file_fd);
@@ -181,7 +174,7 @@ stop_success:
     
 }
 
-int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char buffer[MAX_BLOCK_SIZE],int client_handler_id) {
+int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char* buffer,int client_handler_id) {
     size_t max_block_size = MAX_BLOCK_SIZE;
     int is_bigfile = 0;
     if(client_h->option != NULL && strcmp(client_h->option,"bigfile") == 0){
@@ -281,7 +274,7 @@ stop_success:
 
 static int handle_client_requests(config status,int main_socket_fd){
     char* option;
-    int option_value;
+    uint64_t option_value;
     int max_socket_value = main_socket_fd;  // improve performance instead of using FD_SETSIZE
     fd_set master,clone;
     struct timeval timer;
@@ -340,7 +333,6 @@ static int handle_client_requests(config status,int main_socket_fd){
                            client_h[current].option =strdup("bigfile");
                            client_h[current].last_block = malloc(BIG_FILE_MAX_BLOCK_SIZE);
                            client_h[current].option_value = option_value;
-                           printf("option value  = %d | %ld \n",option_value,client_h[current].option_value);
                         }
                         else {
                             client_h[current].option =strdup("none");
@@ -406,6 +398,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                     switch (client_h[i].operation)  // depending on operation of the client handler
                     {
                         case READ:
+                            if(check_packet(buffer,ACK,status,client_h[i].client_addr,client_h[i].socket,i) == -1)
+                                goto out_failure;
                             client_h[i].block_number = get_block_number(buffer);
                             handle_rrq(status,filename,main_socket_fd,&client_h[i],i);    
                             time(&client_h[i].last_time_stamp); // update last time_stamp
@@ -423,14 +417,8 @@ static int handle_client_requests(config status,int main_socket_fd){
                     double time_passed = difftime(time(NULL),client_h[i].last_time_stamp);  
                     client_h[i].timeout+=time_passed;               // Update total time passed 
                     if(client_h[i].timeout >= status.timemout){     // total time out reached for a single block
-                        //free all ressources and quit 
                         printf("RRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
-                        fclose(client_h[i].file_fd);
-                        free(client_h[i].filename);
-                        free(client_h[i].client_addr);
-                        free(client_h[i].last_block);
-                        free(client_h[i].option);
-                        client_handler_init(&client_h[i]);  
+                        goto out_failure;
                     }
                     else if(time_passed >= status.per_packet_time_out){  // check if a second has passed between last time_stamp and now , if so resend the last packet
                         send_data_packet(status,client_h[i].block_number+1,client_h[i].last_block,client_h[i].client_addr,client_h[i].last_block_size,client_h[i].socket,i);
@@ -443,18 +431,21 @@ static int handle_client_requests(config status,int main_socket_fd){
                     client_h[i].timeout+=time_passed;               // Update total time passed
                     time(&client_h[i].last_time_stamp); // update last time_stamp
                     if(client_h[i].timeout >= status.timemout){     // total time out reached for a single block
-                        //free all ressources and quit 
                         printf("WRQ FAILED : <%s, %ld bytes>\n",client_h[i].filename,client_h[i].number_bytes_operated);
-                        fclose(client_h[i].file_fd);
-                        free(client_h[i].filename);
-                        free(client_h[i].client_addr);
-                        free(client_h[i].last_block);
-                        free(client_h[i].option);
-                        client_handler_init(&client_h[i]);
+                        goto out_failure;
                     }
                     // We don't resend the ack
                 }
             }
+        continue;
+        out_failure:
+        fclose(client_h[i].file_fd);
+        free(client_h[i].filename);
+        free(client_h[i].client_addr);
+        free(client_h[i].last_block);
+        free(client_h[i].option);
+        client_handler_init(&client_h[i]);  
+        continue;
         }
     }
     return 0;  

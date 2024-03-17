@@ -326,14 +326,6 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     }
     set_socket_timer(sockfd,status.timemout,0);
     FILE* requested_file = NULL;
-    // TODO : gerer le cas netascii
-    if(!strcasecmp(status.transfer_mode,"octet")){
-        requested_file= fopen(filename, "wb");
-    }
-    if (!requested_file) {
-        perror("Failed to open file");
-        goto out_failure;
-    }
     size_t total_bytes_received = 0;
     size_t bytes_received = 0 ;
     memset(packet, 0, packet_size);
@@ -344,7 +336,7 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
     if(request(RRQ, filename, status, sockfd, (struct sockaddr*)server_addr) == -1){
         goto out_failure;
     }
-    if(is_bigfile){ //IF BIGFILE WAIT FOR OACK AND SEND AN ACK0 AFTER
+    if(is_bigfile){ //IF BIGFILE WAIT FOR OACK AND SEND AN ACK0 AFTER CHECKING IF THE SIZE OF FILE IS ACCEPTABLE
         bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
         if(bytes_received == -1) {
             //Actual error when using recvfrom
@@ -359,8 +351,23 @@ static int receive_file(const char* filename, config status ,struct sockaddr_in*
         if(check_packet(packet,OACK,status,server_addr,sockfd,-1) == -1){
             goto out_failure;
         }
+        //Check if the file size is larger than what we can handle
+        if(get_option_value(packet) > status.max_file_size){
+            printf("option : %s | value : %ld | maxfile : %ld\n",get_option(packet),get_option_value(packet),status.max_file_size);
+            send_error_packet(status,OPTION_ERROR,"File size greater than expected",server_addr,sockfd,-1);
+            goto out_failure;
+        }
+
         if(send_ack_packet(status,(struct sockaddr*)server_addr,0,sockfd,-1) == -1)
             goto out_failure;
+    }
+     // TODO : gerer le cas netascii
+    if(!strcasecmp(status.transfer_mode,"octet")){
+        requested_file= fopen(filename, "wb");
+    }
+    if (!requested_file) {
+        perror("Failed to open file");
+        goto out_failure;
     }
     while (1) {
         bytes_received = recvfrom(sockfd, packet, packet_size, 0, (struct sockaddr*)server_addr, &len);        
@@ -408,6 +415,7 @@ out_failure:
         free(packet);
     return -1;
 }
+
 
 
 int main(int argc, char const* argv[]) {

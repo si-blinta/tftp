@@ -68,7 +68,7 @@ static int handle_client_requests(config status,int main_socket_fd);
  * @param client_handler_id The index of the client handler in , client_h array.
  * @return 0 on success , -1 on error.
  */
-int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char buffer[MAX_BLOCK_SIZE],int client_handler_id);
+int handle_wrq(config status, char* filename,int main_socket_fd,client_handler* client_h, size_t bytes_received, char* buffer,int client_handler_id);
 
 //-------------------------------------------------------------------------------------
 /**

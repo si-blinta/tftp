@@ -221,7 +221,7 @@ void trace_sent(char* packet,size_t packet_size,int client_handler_id){
         }
         case OACK:{
             if(client_handler_id != -1)printf("CLIENT HANDLER # %d ",client_handler_id);
-            printf("sent OACK <block=%d>\n",get_block_number(packet));
+            printf("sent OACK <option=%s, value=%ld>\n",get_option(packet),get_option_value(packet));
             break;
         }
         default:
@@ -266,7 +266,7 @@ void trace_received(char* packet,size_t packet_size,int client_handler_id){
             break;
          case OACK:
             if(client_handler_id != -1)printf("CLIENT HANDLER # %d ",client_handler_id);
-            printf("received OACK <block=%d>\n",get_block_number(packet));
+             printf("received OACK <option=%s, value=%ld>\n",get_option(packet),get_option_value(packet));
             break;
         default:
             break;
@@ -299,27 +299,44 @@ int check_packet(char* packet, int type,config status,const struct sockaddr_in* 
         return 0;
 }
 char* get_option(char* packet){
-    char* filename = get_file_name(packet);
-    char* mode = get_mode(packet);
-    char* option = strdup(packet+ strlen(filename) + strlen(mode) + 4);
-    free(filename);
-    free(mode);
-    return option;
+    if(get_opcode(packet) == RRQ || get_opcode(packet) == WRQ){
+        char* filename = get_file_name(packet);
+        char* mode = get_mode(packet);
+        char* option = strdup(packet+ strlen(filename) + strlen(mode) + 4);
+        free(filename);
+        free(mode);
+        return option;
+    }
+    else if(get_opcode(packet) == OACK){
+        return packet+2;
+    }
+    return NULL;
 }
 uint64_t get_option_value(char* packet){
-    char* filename = get_file_name(packet);
-    char* mode = get_mode(packet);
-    char* option = get_option(packet);
-    char* option_value = strdup(packet+ strlen(filename) + strlen(mode) + strlen(option)+ 5);
-    uint64_t value = (uint64_t) strtoll(option_value,NULL,10);
-    free(filename);
-    free(mode);
-    free(option);
-    free(option_value);
-    return value;
+    if(get_opcode(packet) == DATA){
+        char* filename = get_file_name(packet);
+        char* mode = get_mode(packet);
+        char* option = get_option(packet);
+        char* option_value = strdup(packet+ strlen(filename) + strlen(mode) + strlen(option)+ 5);
+        uint64_t value = (uint64_t) strtoll(option_value,NULL,10);
+        free(filename);
+        free(mode);
+        free(option);
+        free(option_value);
+        return value;
+    }
+    else if(get_opcode(packet) == OACK){
+        char* option = strdup(packet + 2);
+        char* option_value  = strdup(packet+2+strlen(option)+1);
+        uint64_t value = (uint64_t) strtoll(option_value,NULL,10);
+        free(option);
+        free(option_value);
+        return value;
+    }
+    return 0;
 }
 char* build_oack_packet(char* option,char* value, size_t* packet_size) {
-    *packet_size = 2 + strlen(option) +1 + strlen(value) + 1; // Opcode (2 bytes) + Block number (2 bytes)
+    *packet_size = 2 + strlen(option) +1 + strlen(value) + 1; 
     char* packet = malloc(*packet_size);
     if (packet == NULL) {
         perror("malloc");
@@ -331,8 +348,10 @@ char* build_oack_packet(char* option,char* value, size_t* packet_size) {
     memcpy(packet + offset, &net_opcode, sizeof(net_opcode));
     offset += sizeof(net_opcode);
     memcpy(packet + offset, option, strlen(option));
+    offset += strlen(option);
     packet[offset++] = 0;
     memcpy(packet + offset, value, strlen(value));
+    offset += strlen(value);
     packet[offset++] = 0;
     // No need to adjust offset after this, as we're done
     return packet;
